@@ -23,4 +23,6 @@ export const config = Object.freeze({
   upstreamTimeoutMs: 600_000,
   /** Abort when the provider sends nothing (text or reasoning) for this long. */
   idleTimeoutMs: readInt(process.env.LLM_IDLE_TIMEOUT_MS, 120_000),
+  /** Wait for the first chunk; proxies such as 9router may not forward a model's thinking. */
+  firstChunkTimeoutMs: readInt(process.env.LLM_FIRST_CHUNK_TIMEOUT_MS, 300_000),
 })

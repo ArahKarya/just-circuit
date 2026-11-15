@@ -42,11 +42,15 @@ async function handleChat(req: Request, res: Response): Promise<void> {
 
   const clientGone = new AbortController()
   const upstream = new AbortController()
-  let stopReason: "idle" | "total" | null = null
-  const idle = createIdleTimer(config.idleTimeoutMs, () => {
-    stopReason = "idle"
-    upstream.abort()
-  })
+  let stopReason: "first" | "idle" | "total" | null = null
+  const idle = createIdleTimer(
+    config.idleTimeoutMs,
+    (phase) => {
+      stopReason = phase === "first" ? "first" : "idle"
+      upstream.abort()
+    },
+    config.firstChunkTimeoutMs,
+  )
   const total = setTimeout(() => {
     stopReason = "total"
     upstream.abort()
@@ -75,7 +79,8 @@ async function handleChat(req: Request, res: Response): Promise<void> {
     let finishReason: string | undefined
     let failed = false
     for await (const part of result.fullStream) {
-      idle.touch()
+      // Only real output counts as progress; lifecycle parts (start, start-step) arrive with the headers.
+      if (part.type === "text-delta" || part.type === "reasoning-delta") idle.touch()
       if (part.type === "text-delta") writeEvent(res, { type: "text", text: part.text })
       else if (part.type === "reasoning-delta") writeEvent(res, { type: "reasoning", text: part.text })
       else if (part.type === "error") {
@@ -101,12 +106,19 @@ async function handleChat(req: Request, res: Response): Promise<void> {
   }
 }
 
-function timeoutMessage(reason: "idle" | "total" | null): string | null {
+function formatDuration(ms: number): string {
+  return ms >= 60_000 ? `${Math.round(ms / 60_000)} menit` : `${Math.round(ms / 1000)} detik`
+}
+
+function timeoutMessage(reason: "first" | "idle" | "total" | null): string | null {
+  if (reason === "first") {
+    return `AI belum mengirim balasan apa pun setelah ${formatDuration(config.firstChunkTimeoutMs)}, jadi dihentikan. Model mungkin antre atau kuota provider habis; coba model yang lebih cepat (mis. Sonnet).`
+  }
   if (reason === "idle") {
-    return `AI tidak mengirim apa pun selama ${Math.round(config.idleTimeoutMs / 1000)} detik, jadi dihentikan. Provider atau model ini mungkin sedang bermasalah; coba model lain.`
+    return `AI berhenti mengirim selama ${formatDuration(config.idleTimeoutMs)} di tengah jawaban, jadi dihentikan. Provider atau model ini mungkin sedang bermasalah; coba model lain.`
   }
   if (reason === "total") {
-    return `Jawaban AI melebihi ${Math.round(config.upstreamTimeoutMs / 60_000)} menit, jadi dihentikan. Coba minta bagian yang lebih kecil.`
+    return `Jawaban AI melebihi ${formatDuration(config.upstreamTimeoutMs)}, jadi dihentikan. Coba minta bagian yang lebih kecil.`
   }
   return null
 }

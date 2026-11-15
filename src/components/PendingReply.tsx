@@ -8,7 +8,7 @@ interface PendingReplyProps {
   busySince: number | null
 }
 
-const SLOW_HINT_AFTER_S = 60
+const SLOW_HINT_AFTER_S = 90
 
 /** Hides a code block that is still being written, showing its line count instead. */
 function displayText(text: string): string {
@@ -51,7 +51,7 @@ export function PendingReply({ streamingText, reasoningText, busySince }: Pendin
         {text && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-muted">{text}</p>}
         {isSilent && seconds >= SLOW_HINT_AFTER_S && (
           <p className="text-xs text-amber-300">
-            Belum ada respons dari provider. Kalau terlalu lama, klik tombol stop lalu coba model lain.
+            Belum ada respons. Model besar seperti Opus bisa berpikir beberapa menit tanpa terlihat (ditunggu sampai 5 menit). Kalau tidak sabar, klik stop lalu pakai Sonnet.
           </p>
         )}
       </div>
