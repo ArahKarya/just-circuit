@@ -1,4 +1,4 @@
-import { APICallError } from "ai"
+import { APICallError, RetryError } from "ai"
 import { describe, expect, it } from "vitest"
 import { describeProviderError } from "./errors"
 import { normalizeBaseUrl } from "./providers"
@@ -30,6 +30,14 @@ describe("describeProviderError", () => {
   it("explains auth and quota errors", () => {
     expect(describeProviderError(make(401))).toContain("API key ditolak")
     expect(describeProviderError(make(429))).toContain("Kuota")
+  })
+
+  it("unwraps retry errors and explains 503", () => {
+    const retry = new RetryError({ message: "Failed after 2 attempts", reason: "maxRetriesExceeded", errors: [make(503), make(503)] })
+    const text = describeProviderError(retry)
+    expect(text).toContain("HTTP 503")
+    expect(text).toContain("tidak tersedia")
+    expect(text).toContain("dicoba 2x")
   })
 
   it("falls back to the plain message for other errors", () => {

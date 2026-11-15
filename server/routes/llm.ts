@@ -73,16 +73,19 @@ async function handleChat(req: Request, res: Response): Promise<void> {
       onError: () => undefined,
     })
     let finishReason: string | undefined
+    let failed = false
     for await (const part of result.fullStream) {
       idle.touch()
       if (part.type === "text-delta") writeEvent(res, { type: "text", text: part.text })
       else if (part.type === "reasoning-delta") writeEvent(res, { type: "reasoning", text: part.text })
       else if (part.type === "error") {
-        logger.warn("llm chat failed", { ...logContext, error: describeProviderError(part.error) })
+        failed = true
+        logger.warn("llm chat failed", { ...logContext, seconds: Math.round((Date.now() - startedAt) / 1000), error: describeProviderError(part.error) })
         writeEvent(res, { type: "error", message: describeProviderError(part.error) })
       } else if (part.type === "finish") finishReason = part.finishReason
     }
     if (stopReason) throw new Error("stopped")
+    if (failed) return
     logger.info("llm chat done", { ...logContext, finishReason, seconds: Math.round((Date.now() - startedAt) / 1000) })
     writeEvent(res, { type: "done", finishReason })
   } catch (error) {
