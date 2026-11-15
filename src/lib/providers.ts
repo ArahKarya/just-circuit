@@ -24,10 +24,10 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     id: "9router",
     label: "9router",
     kind: "openai-compatible",
-    baseUrl: "https://9router.arahkarya.com/v1",
+    baseUrl: "http://100.101.203.54:20128/v1",
     model: "",
     needsKey: true,
-    hint: "Proxy 9router milikmu. Ganti ke http://localhost:20128/v1 kalau jalan lokal.",
+    hint: "9router di RPi5 lewat Tailscale. Bisa pakai jenis API OpenAI-compatible atau Anthropic, Base URL tetap diakhiri /v1.",
   },
   {
     id: "gemini",

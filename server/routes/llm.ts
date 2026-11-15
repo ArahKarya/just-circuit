@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express"
 import { streamText } from "ai"
 import { config } from "../config.js"
 import { errorMessage, logger } from "../logger.js"
+import { describeProviderError } from "../llm/errors.js"
 import { UrlGuardError } from "../net/url-guard.js"
 import { createLanguageModel, listModels } from "../llm/providers.js"
 import { chatRequestSchema, modelsRequestSchema } from "../llm/schema.js"
@@ -53,18 +54,23 @@ async function handleChat(req: Request, res: Response): Promise<void> {
       maxOutputTokens: body.maxOutputTokens,
       abortSignal: AbortSignal.any([abort.signal, AbortSignal.timeout(config.upstreamTimeoutMs)]),
       maxRetries: 1,
+      // Errors are reported through fullStream below; this stops the SDK from dumping them to the console.
+      onError: () => undefined,
     })
     let finishReason: string | undefined
     for await (const part of result.fullStream) {
       if (part.type === "text-delta") writeEvent(res, { type: "text", text: part.text })
-      else if (part.type === "error") writeEvent(res, { type: "error", message: errorMessage(part.error) })
+      else if (part.type === "error") {
+        logger.warn("llm chat failed", { kind: body.connection.kind, error: describeProviderError(part.error) })
+        writeEvent(res, { type: "error", message: describeProviderError(part.error) })
+      }
       else if (part.type === "finish") finishReason = part.finishReason
     }
     writeEvent(res, { type: "done", finishReason })
   } catch (error) {
     if (!abort.signal.aborted) {
-      logger.warn("llm chat failed", { kind: body.connection.kind, error: errorMessage(error) })
-      writeEvent(res, { type: "error", message: errorMessage(error) })
+      logger.warn("llm chat failed", { kind: body.connection.kind, error: describeProviderError(error) })
+      writeEvent(res, { type: "error", message: describeProviderError(error) })
     }
   } finally {
     res.end()

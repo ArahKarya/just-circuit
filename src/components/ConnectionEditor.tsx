@@ -11,8 +11,8 @@ interface ConnectionEditorProps {
 }
 
 const BASE_URL_HINT: Record<ProviderKind, string> = {
-  "openai-compatible": "Wajib. Contoh: https://openrouter.ai/api/v1",
-  anthropic: "Kosongkan untuk https://api.anthropic.com/v1",
+  "openai-compatible": "Wajib, biasanya diakhiri /v1. Contoh: https://openrouter.ai/api/v1. Kalau hanya host, /v1 ditambahkan otomatis.",
+  anthropic: "Kosongkan untuk https://api.anthropic.com/v1. Untuk proxy (mis. 9router) isi http://host:port/v1.",
   gemini: "Kosongkan untuk https://generativelanguage.googleapis.com/v1beta",
 }
 

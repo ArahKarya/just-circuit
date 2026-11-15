@@ -12,13 +12,27 @@ const DEFAULT_BASE_URL: Record<Connection["kind"], string | null> = {
   gemini: "https://generativelanguage.googleapis.com/v1beta",
 }
 
-/** Resolves and validates the base URL for a connection, without a trailing slash. */
+/** API version path appended when the user enters only a host, e.g. http://localhost:20128. */
+const DEFAULT_VERSION_PATH: Record<Connection["kind"], string> = {
+  "openai-compatible": "/v1",
+  anthropic: "/v1",
+  gemini: "/v1beta",
+}
+
+/** Adds the API version path when the base URL has no path, and drops trailing slashes. */
+export function normalizeBaseUrl(url: URL, kind: Connection["kind"]): string {
+  const path = url.pathname.replace(/\/+$/, "")
+  const fullPath = path === "" ? DEFAULT_VERSION_PATH[kind] : path
+  return `${url.origin}${fullPath}${url.search}`
+}
+
+/** Resolves and validates the base URL for a connection. */
 export async function resolveBaseUrl(connection: Connection): Promise<string> {
   const raw = connection.baseUrl || DEFAULT_BASE_URL[connection.kind]
   if (!raw) throw new UrlGuardError("Base URL wajib diisi untuk provider OpenAI-compatible")
   const url = parseHttpUrl(raw)
   await assertPublicHost(url, config.allowPrivateLlmHosts)
-  return url.toString().replace(/\/+$/, "")
+  return normalizeBaseUrl(url, connection.kind)
 }
 
 export async function createLanguageModel(connection: Connection & { model: string }): Promise<LanguageModel> {
@@ -90,8 +104,9 @@ export async function listModels(connection: Connection): Promise<string[]> {
   const body = await readLimited(response, MAX_MODELS_BYTES)
   if (!response.ok) {
     // Echo the provider's message only while private hosts are blocked, so this can't read internal services.
-    const detail = config.allowPrivateLlmHosts ? "" : `: ${body.toString("utf8").slice(0, 300)}`
-    throw new Error(`Provider menolak permintaan daftar model (HTTP ${response.status})${detail}`)
+    const detail = config.allowPrivateLlmHosts ? "" : ` ${body.toString("utf8").slice(0, 300)}`
+    const hint = response.status === 404 ? " Endpoint tidak ditemukan, cek Base URL (biasanya diakhiri /v1)." : ""
+    throw new Error(`Provider menolak permintaan daftar model (HTTP ${response.status}, ${request.url}).${hint}${detail}`)
   }
   let parsed: unknown
   try {
