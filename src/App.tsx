@@ -1,9 +1,11 @@
+import type { ManualEditEvent } from "@tscircuit/core"
 import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@tscircuit/runframe/runner"
-import { CircuitBoard, Code2, FolderOpen, MessageSquare, PackagePlus, Settings } from "lucide-react"
-import { useCallback, useMemo, useState } from "react"
+import { CircuitBoard, Code2, FolderOpen, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
 import toast from "react-hot-toast"
 import { ChatPanel } from "./components/ChatPanel"
+import { LayoutEditor } from "./components/LayoutEditor"
 import { CodeEditor } from "./components/CodeEditor"
 import { PreviewPane } from "./components/PreviewPane"
 import { ProjectsDialog } from "./components/ProjectsDialog"
@@ -13,6 +15,8 @@ import { useAiSettings } from "./hooks/useAiSettings"
 import { useChat } from "./hooks/useChat"
 import { useProjects } from "./hooks/useProjects"
 import { useWorkingProject } from "./hooks/useWorkingProject"
+import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
+import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
 import { addImportedComponent, withFiles, withoutFile } from "./lib/project-ops"
 import { activeConnection, connectionProblem } from "./lib/providers"
 import type { RunStatus } from "./lib/types"
@@ -35,6 +39,10 @@ export function App() {
   const [dialog, setDialog] = useState<DialogName>(null)
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [runStatus, setRunStatus] = useState<RunStatus>({ state: "idle", errors: [], revision: "" })
+  const [circuitJson, setCircuitJson] = useState<unknown[] | null>(null)
+  const [isLayoutMode, setIsLayoutMode] = useState(false)
+  /** Circuit shown in the layout editor, fixed while it is open. */
+  const layoutCircuit = useRef<unknown[]>([])
   const project = working.project
 
   const chat = useChat({ project, runStatus, onApplyProject: working.apply })
@@ -61,6 +69,43 @@ export function App() {
     [project, working],
   )
 
+  // A rendered circuit belongs to one project; forget it when switching.
+  const projectId = project?.id
+  useEffect(() => {
+    setCircuitJson(null)
+    setIsLayoutMode(false)
+  }, [projectId])
+
+  const canEditLayout = circuitJson !== null && runStatus.state === "ok"
+
+  const openLayoutEditor = useCallback(() => {
+    if (!project || !circuitJson) return
+    layoutCircuit.current = circuitJson
+    setIsLayoutMode(true)
+  }, [project, circuitJson])
+
+  const handleLayoutMove = useCallback(
+    (event: ManualEditEvent, snapshot: unknown[]) => {
+      let outcome: LayoutMoveOutcome | null = null
+      working
+        .update((current) => {
+          const result = applyLayoutMove(current, event, snapshot)
+          outcome = result.outcome
+          return result.project
+        })
+        .then(() => {
+          const result = outcome as LayoutMoveOutcome | null
+          if (result?.kind === "unsupported") {
+            toast.error(`${result.name}: pcbX/pcbY di ${result.path} berupa rumus, ubah manual di kode.`)
+          } else if (result?.kind === "manual-edits" && !result.wired) {
+            toast.error(`Posisi disimpan di ${MANUAL_EDITS_FILE}, tapi file utama tidak punya <board>. Tambahkan manualEdits ke board-mu.`)
+          }
+        })
+        .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Gagal menyimpan posisi"))
+    },
+    [working],
+  )
+
   const status = STATUS_STYLES[runStatus.state]
   const files = useMemo(() => project?.files ?? {}, [project?.files])
 
@@ -80,6 +125,9 @@ export function App() {
         </button>
         <span className={`ml-2 text-xs ${status.className}`} title={runStatus.errors.join("\n")}>{status.label}</span>
         <div className="ml-auto flex items-center gap-1">
+          <Button onClick={openLayoutEditor} disabled={!canEditLayout || isLayoutMode} title={canEditLayout ? "Seret komponen di PCB" : "Butuh build yang berhasil"}>
+            <Move size={15} />Atur posisi
+          </Button>
           <Button onClick={() => setDialog("import")}><PackagePlus size={15} />Impor part JLCPCB</Button>
           <IconButton label="Pengaturan AI" onClick={() => setDialog("settings")}><Settings size={17} /></IconButton>
         </div>
@@ -111,13 +159,23 @@ export function App() {
                 activeFile={currentFile ?? project.entrypoint}
                 onSelectFile={setActiveFile}
                 onChange={(path, content) => working.edit(withFiles(project, { [path]: content }))}
-                onDeleteFile={(path) => void working.apply(withoutFile(project, path))}
+                onDeleteFile={(path) => {
+                  if (path === MANUAL_EDITS_FILE) {
+                    // The entrypoint imports this file, so reset it instead of deleting it.
+                    void working.apply(withFiles(project, { [path]: "{}\n" })).then(() => toast.success("Posisi manual direset"))
+                    return
+                  }
+                  void working.apply(withoutFile(project, path))
+                }}
               />
             )}
           </div>
         </section>
-        <section className="min-h-0 flex-1">
-          <PreviewPane files={files} entrypoint={project.entrypoint} onStatus={setRunStatus} />
+        <section className="relative min-h-0 flex-1">
+          <PreviewPane files={files} entrypoint={project.entrypoint} onStatus={setRunStatus} onCircuitJson={setCircuitJson} />
+          {isLayoutMode && (
+            <LayoutEditor circuitJson={layoutCircuit.current} onMove={handleLayoutMove} onDone={() => setIsLayoutMode(false)} />
+          )}
         </section>
       </main>
 

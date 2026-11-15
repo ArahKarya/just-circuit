@@ -24,6 +24,9 @@
     "paths": {
       "@tscircuit/runframe/runner": [
         "./src/types/runframe.d.ts"
+      ],
+      "@tscircuit/core": [
+        "./src/types/tscircuit-core.d.ts"
       ]
     }
   },

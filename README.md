@@ -10,6 +10,7 @@ Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langs
   - OpenAI-compatible: OpenRouter, Groq, Ollama lokal, 9router, OpenAI, atau endpoint `/v1/chat/completions` lainnya
   - Anthropic (Claude) native
   - Google Gemini native
+- **Atur posisi (drag & drop di PCB)**: tombol "Atur posisi" membuka PCB yang bisa diseret. Komponen yang posisinya sudah ditulis di kode (`pcbX`/`pcbY`) diperbarui langsung di kode; komponen lain disimpan ke `manual-edits.json` (format resmi tscircuit, otomatis di-import ke `<board manualEdits={...}>`). Hapus tab `manual-edits.json` untuk mereset posisi manual.
 - **Banyak proyek**: buat, ganti nama, duplikat, hapus, unduh ZIP (bisa dibuka langsung dengan `tsci dev`).
 - **Impor part JLCPCB**: cari part (mis. `C46749`), lalu komponen TSX-nya ditambahkan ke `imports/` dan otomatis di-import ke file utama.
 - **Ekspor** (menu File → Export di preview): Fabrication files (Gerber), KiCad project/library, STEP, GLB, Pinout SVG, Circuit JSON, dan lainnya.
@@ -73,4 +74,5 @@ Tes impor JLCPCB (`e2e/import.spec.ts`) memanggil API jlcsearch/EasyEDA yang asl
 
 - `tsc` butuh heap besar karena tipe tscircuit sangat besar; `src/types/runframe.d.ts` berisi tipe ringkas untuk bagian runframe yang dipakai.
 - Ekspor Altium tidak didukung (paketnya hanya tersedia dari git dan butuh build Bun). Pakai ekspor KiCad lalu impor ke Altium.
-- Preview PCB memakai WebGPU dengan fallback dari runframe; pakai Chrome/Edge/Safari versi baru.
+- Preview PCB memakai WebGPU; pakai Chrome/Edge/Safari versi baru. Tes E2E menyalakan WebGPU software (SwiftShader) lewat argumen Chromium di `e2e/layout.spec.ts`.
+- Geser komponen hanya di PCB. Schematic viewer di runframe versi ini belum mengirim event edit.

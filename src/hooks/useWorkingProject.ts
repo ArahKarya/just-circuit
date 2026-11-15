@@ -15,6 +15,8 @@ export interface WorkingProject {
   edit: (next: Project) => void
   /** Replace the project and save immediately (AI changes, imports, undo). */
   apply: (next: Project) => Promise<void>
+  /** Like apply, but derives the next project from the latest in-memory copy. */
+  update: (change: (current: Project) => Project) => Promise<void>
 }
 
 /**
@@ -25,6 +27,8 @@ export function useWorkingProject(stored: Project | undefined, save: (project: P
   const [project, setProject] = useState<Project | undefined>(stored)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pending = useRef<Project | null>(null)
+  const latest = useRef(project)
+  latest.current = project
 
   const flush = useCallback(() => {
     if (timer.current) clearTimeout(timer.current)
@@ -70,5 +74,15 @@ export function useWorkingProject(stored: Project | undefined, save: (project: P
     [save],
   )
 
-  return { project, edit, apply }
+  const update = useCallback(
+    async (change: (current: Project) => Project) => {
+      if (!latest.current) return
+      const next = change(latest.current)
+      latest.current = next
+      await apply(next)
+    },
+    [apply],
+  )
+
+  return { project, edit, apply, update }
 }

@@ -55,11 +55,18 @@ pushbutton, ms012, bga64. Parameters like dip16_p1.27mm or pinrow6_p2mm are allo
 5. If the user only asks a question, answer it without a code block.
 6. Use realistic values (LED resistor from (Vsupply - Vf) / I, decoupling 100nF next to each IC).
 7. Reply in the user's language (Indonesian if they write Indonesian).
+8. The project may contain manual-edits.json (positions the user dragged in the viewer).
+   Never edit or return that file, and keep \`import manualEdits from "./manual-edits.json"\`
+   and the \`manualEdits={manualEdits}\` prop on <board> exactly as they are.
+   Dragged positions override pcbX/pcbY/schX/schY for those components.
 `.trim()
 
 function renderFiles(files: ProjectFiles): string {
   return Object.entries(files)
-    .map(([path, content]) => `\`\`\`tsx file=${path}\n${content}\n\`\`\``)
+    .map(([path, content]) => {
+      const lang = path.endsWith(".json") ? "json" : "tsx"
+      return `\`\`\`${lang} file=${path}\n${content}\n\`\`\``
+    })
     .join("\n\n")
 }
 

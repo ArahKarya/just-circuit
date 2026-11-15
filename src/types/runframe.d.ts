@@ -4,6 +4,7 @@
  * which makes `tsc` run out of memory, so tsconfig maps the import here.
  */
 import type { JSX } from "react"
+import type { ManualEditEvent } from "@tscircuit/core"
 
 export type TabId = "code" | "pcb" | "schematic" | "assembly" | "cad" | "bom" | "circuit_json" | "errors" | "render_log"
 
@@ -22,6 +23,7 @@ export interface RunFrameProps {
   defaultActiveTab?: TabId
   onRenderStarted?: () => void
   onRunCompleted?: (payload: RunCompletedPayload) => void
+  onRenderFinished?: (params: { circuitJson: unknown[] }) => void
   onError?: (error: Error) => void
   easyEdaProxyConfig?: { proxyEndpointUrl: string; headers?: Record<string, string> }
 }
@@ -51,5 +53,16 @@ export interface ImportComponentDialog2Props {
   jlcpcbProxyRequestHeaders?: Record<string, string>
   onJlcpcbComponentTsxLoaded?: (payload: JlcpcbComponentTsxLoadedPayload) => void | Promise<void>
 }
+
+export interface PcbViewerWithContainerHeightProps {
+  circuitJson?: unknown[]
+  containerClassName?: string
+  allowEditing?: boolean
+  initialState?: Record<string, unknown>
+  editEvents?: ManualEditEvent[]
+  onEditEventsChanged?: (events: ManualEditEvent[]) => void
+}
+
+export declare function PcbViewerWithContainerHeight(props: PcbViewerWithContainerHeightProps): JSX.Element
 
 export declare function ImportComponentDialog2(props: ImportComponentDialog2Props): JSX.Element

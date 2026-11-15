@@ -8,6 +8,8 @@ interface PreviewPaneProps {
   files: ProjectFiles
   entrypoint: string
   onStatus: (status: RunStatus) => void
+  /** Latest rendered circuit, used by the layout editor. */
+  onCircuitJson: (circuitJson: unknown[]) => void
 }
 
 const PREVIEW_DEBOUNCE_MS = 700
@@ -26,7 +28,7 @@ function describeError(error: unknown): string {
   }
 }
 
-function PreviewPaneImpl({ files, entrypoint, onStatus }: PreviewPaneProps) {
+function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson }: PreviewPaneProps) {
   const debouncedFiles = useDebounced(files, PREVIEW_DEBOUNCE_MS)
   const revision = useMemo(() => filesKey(debouncedFiles), [debouncedFiles])
   const fsMap = useMemo(() => ({ ...debouncedFiles }), [debouncedFiles])
@@ -40,6 +42,7 @@ function PreviewPaneImpl({ files, entrypoint, onStatus }: PreviewPaneProps) {
     },
     [onStatus, revision],
   )
+  const handleRenderFinished = useCallback(({ circuitJson }: { circuitJson: unknown[] }) => onCircuitJson(circuitJson), [onCircuitJson])
 
   return (
     <div className="h-full min-h-0 overflow-hidden bg-white">
@@ -51,6 +54,7 @@ function PreviewPaneImpl({ files, entrypoint, onStatus }: PreviewPaneProps) {
         defaultActiveTab="pcb"
         onRenderStarted={handleStarted}
         onRunCompleted={handleCompleted}
+        onRenderFinished={handleRenderFinished}
         easyEdaProxyConfig={{ proxyEndpointUrl: "/api/jlc/proxy" }}
       />
     </div>

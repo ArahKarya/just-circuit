@@ -51,7 +51,8 @@ export function exportedNames(source: string): string[] {
   return [...new Set(names)]
 }
 
-function importSpecifier(fromFile: string, toFile: string): string {
+/** Relative import path from one project file to another, without the .ts/.tsx extension. */
+export function importSpecifier(fromFile: string, toFile: string): string {
   const fromDir = fromFile.split("/").slice(0, -1)
   const toParts = toFile.replace(/\.(tsx|ts|jsx|js)$/, "").split("/")
   let shared = 0

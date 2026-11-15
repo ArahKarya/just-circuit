@@ -51,7 +51,7 @@ export function CodeEditor({ project, activeFile, onSelectFile, onChange, onDele
       <div className="min-h-0 flex-1">
         <Editor
           path={`${project.id}/${activeFile}`}
-          language="typescript"
+          language={activeFile.endsWith(".json") ? "json" : "typescript"}
           theme="vs-dark"
           value={content}
           beforeMount={configureMonaco}
