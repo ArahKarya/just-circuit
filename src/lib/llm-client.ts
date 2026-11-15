@@ -13,9 +13,15 @@ export interface ChatRequest {
   maxOutputTokens: number
   signal?: AbortSignal
   onText: (delta: string) => void
+  /** The model's thinking, streamed before (or between) answer text. */
+  onReasoning?: (delta: string) => void
 }
 
-type StreamEvent = { type: "text"; text: string } | { type: "error"; message: string } | { type: "done"; finishReason?: string }
+type StreamEvent =
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "error"; message: string }
+  | { type: "done"; finishReason?: string }
 
 export interface ChatResult {
   text: string
@@ -69,6 +75,8 @@ export async function streamChat(request: ChatRequest): Promise<ChatResult> {
     if (event?.type === "text") {
       reply += event.text
       request.onText(event.text)
+    } else if (event?.type === "reasoning") {
+      request.onReasoning?.(event.text)
     } else if (event?.type === "error") {
       throw new Error(event.message)
     } else if (event?.type === "done") {

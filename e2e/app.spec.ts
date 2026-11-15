@@ -34,3 +34,20 @@ test("configures an AI connection, generates a circuit and auto-fixes a failed b
   await page.getByRole("tab", { name: "Kode" }).click()
   await expect(page.locator(".monaco-editor")).toContainText('color="blue"')
 })
+
+test("shows the model's thinking and elapsed time while it reasons", async ({ page }) => {
+  await page.goto("/")
+  await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
+  await page.getByRole("button", { name: "Pengaturan AI" }).click()
+  await page.getByLabel("Tambah dari preset").selectOption("custom")
+  await page.getByRole("button", { name: "Tambah", exact: true }).click()
+  await page.getByLabel("Base URL").fill("http://localhost:9911/v1")
+  await page.getByLabel("Model").fill("mock-1")
+  await page.getByRole("button", { name: "Simpan" }).click()
+
+  await page.getByLabel("Pesan untuk AI").fill("THINK lalu buat LED")
+  await page.getByLabel("Pesan untuk AI").press("Enter")
+  await expect(page.getByText(/Berpikir… \d+ dtk/)).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(/menghitung nilai resistor/).first()).toBeVisible()
+  await expect(page.getByText("Sudah diperbaiki: LED biru")).toBeVisible({ timeout: 30_000 })
+})

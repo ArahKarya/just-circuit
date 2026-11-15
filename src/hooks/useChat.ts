@@ -9,6 +9,7 @@ import { buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
 import type { ChatMessage, Project, RunStatus } from "../lib/types"
 
 const HISTORY_LIMIT = 16
+const REASONING_TAIL = 600
 
 interface UseChatOptions {
   project: Project | undefined
@@ -19,6 +20,10 @@ interface UseChatOptions {
 export interface ChatState {
   messages: ChatMessage[]
   streamingText: string
+  /** Tail of the model's current thinking, if it streams any. */
+  reasoningText: string
+  /** When the current request started (ms), for an elapsed-time display. */
+  busySince: number | null
   isBusy: boolean
   autoFixRemaining: number
   send: (text: string) => Promise<void>
@@ -47,6 +52,8 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
       [projectId],
     ) ?? []
   const [streamingText, setStreamingText] = useState("")
+  const [reasoningText, setReasoningText] = useState("")
+  const [busySince, setBusySince] = useState<number | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [autoFixRemaining, setAutoFixRemaining] = useState(0)
   const abortRef = useRef<AbortController | null>(null)
@@ -76,7 +83,9 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
       if (!current || busyRef.current) return false
       busyRef.current = true
       setIsBusy(true)
+      setBusySince(Date.now())
       setStreamingText("")
+      setReasoningText("")
       const addMessage = (message: Omit<ChatMessage, "id" | "projectId" | "createdAt">) =>
         db.messages.add({ id: crypto.randomUUID(), projectId: current.id, createdAt: Date.now(), ...message })
       try {
@@ -102,6 +111,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
           maxOutputTokens: settings.maxOutputTokens,
           signal: controller.signal,
           onText: (delta) => setStreamingText((prev) => prev + delta),
+          onReasoning: (delta) => setReasoningText((prev) => (prev + delta).slice(-REASONING_TAIL)),
         })
         const content = result.truncated
           ? `${result.text}\n\n(Jawaban terpotong karena batas token. Naikkan "Maks token jawaban" di Pengaturan.)`
@@ -124,7 +134,9 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         abortRef.current = null
         busyRef.current = false
         setIsBusy(false)
+        setBusySince(null)
         setStreamingText("")
+        setReasoningText("")
       }
       return true
     },
@@ -177,5 +189,5 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
     await db.messages.where("projectId").equals(projectId).delete()
   }, [projectId])
 
-  return { messages, streamingText, isBusy, autoFixRemaining, send, stop, undo, clear }
+  return { messages, streamingText, reasoningText, busySince, isBusy, autoFixRemaining, send, stop, undo, clear }
 }

@@ -19,5 +19,8 @@ export const config = Object.freeze({
   allowPrivateLlmHosts: readBool(process.env.ALLOW_PRIVATE_LLM_HOSTS, !isProduction),
   rateLimitPerMinute: readInt(process.env.RATE_LIMIT_PER_MINUTE, 60),
   maxBodyBytes: "2mb",
-  upstreamTimeoutMs: 120_000,
+  /** Hard cap for one AI reply; long circuits with reasoning models can take minutes. */
+  upstreamTimeoutMs: 600_000,
+  /** Abort when the provider sends nothing (text or reasoning) for this long. */
+  idleTimeoutMs: readInt(process.env.LLM_IDLE_TIMEOUT_MS, 120_000),
 })

@@ -28,6 +28,14 @@ describe("streamChat", () => {
     expect(onText).toHaveBeenCalledTimes(2)
   })
 
+  it("reports reasoning separately from the answer", async () => {
+    mockStream(['{"type":"reasoning","text":"hmm"}\n{"type":"text","text":"ok"}\n{"type":"done"}\n'])
+    const onReasoning = vi.fn()
+    const result = await streamChat({ ...request(), onReasoning })
+    expect(result.text).toBe("ok")
+    expect(onReasoning).toHaveBeenCalledWith("hmm")
+  })
+
   it("flags replies cut off by the token limit", async () => {
     mockStream(['{"type":"text","text":"a"}\n{"type":"done","finishReason":"length"}'])
     await expect(streamChat(request())).resolves.toEqual({ text: "a", truncated: true })

@@ -27,9 +27,11 @@ function readBody(req) {
   })
 }
 
-function chunk(content) {
-  return `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`
+function chunk(content, field = "content") {
+  return `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: { [field]: content }, finish_reason: null }] })}\n\n`
 }
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/v1/models") {
@@ -40,8 +42,17 @@ createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/v1/chat/completions") {
     const body = await readBody(req)
     const last = body.messages?.at(-1)?.content ?? ""
-    const reply = last.includes("gagal di-build") ? FIXED : BROKEN
     res.writeHead(200, { "Content-Type": "text/event-stream" })
+    // "HANG": send nothing after the headers, to exercise the idle timeout.
+    if (last.includes("HANG")) return
+    // "THINK": stream reasoning for a while before answering.
+    if (last.includes("THINK")) {
+      for (let i = 0; i < 6; i++) {
+        res.write(chunk(`Langkah ${i + 1}: menghitung nilai resistor. `, "reasoning_content"))
+        await sleep(500)
+      }
+    }
+    const reply = last.includes("gagal di-build") || last.includes("THINK") ? FIXED : BROKEN
     for (let i = 0; i < reply.length; i += 40) res.write(chunk(reply.slice(i, i + 40)))
     res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`)
     res.end("data: [DONE]\n\n")

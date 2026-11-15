@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import type { ChatState } from "../hooks/useChat"
 import { stripCodeBlocks } from "../lib/extract-code"
 import type { ChatMessage, Connection } from "../lib/types"
+import { PendingReply } from "./PendingReply"
 import { Button, IconButton } from "./ui"
 
 interface ChatPanelProps {
@@ -56,7 +57,7 @@ export function ChatPanel({ chat, connection, connectionProblem, onOpenSettings 
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
-  }, [chat.messages.length, chat.streamingText])
+  }, [chat.messages.length, chat.streamingText, chat.reasoningText])
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault()
@@ -107,14 +108,7 @@ export function ChatPanel({ chat, connection, connectionProblem, onOpenSettings 
             {chat.messages.map((message) => (
               <MessageBubble key={message.id} message={message} canUndo={message.id === lastAppliedId && !chat.isBusy} onUndo={(m) => void chat.undo(m)} />
             ))}
-            {chat.isBusy && (
-              <li className="flex gap-2.5">
-                <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent"><Bot size={14} /></div>
-                <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted">
-                  {stripCodeBlocks(chat.streamingText).trim() || "Sedang berpikir…"}
-                </p>
-              </li>
-            )}
+            {chat.isBusy && <PendingReply streamingText={chat.streamingText} reasoningText={chat.reasoningText} busySince={chat.busySince} />}
           </ul>
         )}
       </div>
