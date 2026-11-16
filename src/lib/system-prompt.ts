@@ -73,6 +73,14 @@ pushbutton, ms012, bga64. Parameters like dip16_p1.27mm or pinrow6_p2mm are allo
    (resistance, capacitance, inductance), and every <chip> (IC, module, connector, regulator)
    gets manufacturerPartNumber="..." with the real part number, e.g. "AMS1117-3.3" or
    "RP2040". Add supplierPartNumbers={{ jlcpcb: ["C6186"] }} when you know the LCSC number.
+10. You have a memory that is shown below in every request. When the user makes a lasting
+   decision (part choice, pin assignment, voltage, board limits, a module still to do), save it
+   as short bullets in a block at the end of your answer:
+   \`\`\`memory
+   - LDO 3V3 terpisah (AP2112K-3.3), V3V3_EN Pico dimatikan
+   \`\`\`
+   Use \`\`\`memory scope=global for preferences that apply to all the user's projects.
+   Save only new, durable facts, never the code itself.
 `.trim()
 
 function renderFiles(files: ProjectFiles): string {
@@ -85,13 +93,25 @@ function renderFiles(files: ProjectFiles): string {
 }
 
 export const MAX_PROJECT_RULES_CHARS = 4000
+const MAX_MEMORY_PROMPT_CHARS = 8000
 
-export function buildSystemPrompt(files: ProjectFiles, entrypoint: string, projectRules?: string): string {
-  const rules = projectRules?.trim()
-  const rulesSection = rules
-    ? `\n\n## Project rules (from the user, follow them unless they conflict with valid tscircuit)\n${rules.slice(0, MAX_PROJECT_RULES_CHARS)}`
-    : ""
-  return `${TSCIRCUIT_GUIDE}${rulesSection}
+export interface PromptContext {
+  projectRules?: string
+  projectMemory?: string
+  globalMemory?: string
+}
+
+function section(title: string, body: string | undefined, limit: number): string {
+  const text = body?.trim()
+  return text ? `\n\n## ${title}\n${text.slice(0, limit)}` : ""
+}
+
+export function buildSystemPrompt(files: ProjectFiles, entrypoint: string, context: PromptContext = {}): string {
+  const extra =
+    section("Project rules (from the user, follow them unless they conflict with valid tscircuit)", context.projectRules, MAX_PROJECT_RULES_CHARS) +
+    section("Memory: about the user (all projects)", context.globalMemory, MAX_MEMORY_PROMPT_CHARS) +
+    section("Memory: this project (decisions made earlier)", context.projectMemory, MAX_MEMORY_PROMPT_CHARS)
+  return `${TSCIRCUIT_GUIDE}${extra}
 
 ## Current project
 Entrypoint: ${entrypoint}

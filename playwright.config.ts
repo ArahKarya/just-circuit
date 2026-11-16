@@ -7,9 +7,10 @@ const API_PORT = 8788
 export default defineConfig({
   testDir: "e2e",
   timeout: 120_000,
+  expect: { timeout: 10_000 },
   // Tests share one server-side data dir and reset it before each test.
   workers: 1,
-  use: { baseURL: `http://localhost:${WEB_PORT}`, viewport: { width: 1440, height: 900 } },
+  use: { actionTimeout: 15_000, baseURL: `http://localhost:${WEB_PORT}`, viewport: { width: 1440, height: 900 } },
   webServer: [
     { command: "node e2e/mock-llm.mjs", port: 9911, reuseExistingServer: true },
     {

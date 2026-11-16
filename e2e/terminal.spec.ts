@@ -1,4 +1,13 @@
-import { expect, test } from "./fixtures"
+import { expect, test, type Page } from "./fixtures"
+
+/** A login shell (.zshrc, nvm…) may drop keystrokes typed before its prompt is ready: retry until it answers. */
+async function waitForShell(page: Page): Promise<void> {
+  const terminal = page.getByTestId("terminal").first()
+  await expect(async () => {
+    await page.keyboard.type("echo SIAP-$((40+2))\n")
+    await expect(terminal).toContainText("SIAP-42", { timeout: 3_000 })
+  }).toPass({ timeout: 45_000 })
+}
 
 test("runs commands in the project folder and shows files they create in the editor", async ({ page }) => {
   await page.goto("/")
@@ -9,10 +18,12 @@ test("runs commands in the project folder and shows files they create in the edi
   const terminal = page.getByTestId("terminal").first()
   await expect(terminal).toBeVisible()
   await terminal.click()
+  await waitForShell(page)
 
-  await page.keyboard.type("pwd && ls\n")
+  // Short markers: long lines wrap in xterm depending on the panel width.
+  await page.keyboard.type('ls; echo "WS=$(basename "$(dirname "$PWD")")"\n')
   await expect(terminal).toContainText("index.circuit.tsx", { timeout: 15_000 })
-  await expect(terminal).toContainText(".e2e-data/workspaces/default/")
+  await expect(terminal).toContainText("WS=default")
 
   await page.keyboard.type("printf 'export const DariTerminal = () => null\\n' > dari-terminal.tsx\n")
   const tree = page.getByRole("list", { name: "File proyek" })

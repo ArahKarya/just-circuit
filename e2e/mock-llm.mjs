@@ -26,6 +26,15 @@ const BAD_EDIT = `Ganti resistor.\n${editBlock('resistance="999"', 'resistance="
 const GOOD_EDIT = `Resistor diganti 470Ω.\n${editBlock('    <resistor name="R1" resistance="330" footprint="0603" pcbX={0} />', '    <resistor name="R1" resistance="470" footprint="0603" pcbX={0} />')}`
 
 function pickReply(last, body) {
+  if (last.includes("REMEMBER")) {
+    return "Siap, saya catat.\n```memory\n- LDO 3V3 terpisah (AP2112K)\n```\n```memory scope=global\n- Pakai part JLCPCB basic\n```"
+  }
+  if (last.includes("ECHO-MEMORY")) {
+    const system = body.messages?.find((m) => m.role === "system")?.content ?? ""
+    const project = system.includes("## Memory: this project") && system.includes("AP2112K")
+    const global = system.includes("## Memory: about the user") && system.includes("JLCPCB basic")
+    return `Memori proyek: ${project ? "ada" : "tidak"}, memori global: ${global ? "ada" : "tidak"}`
+  }
   if (last.includes("ECHO-RULES")) {
     const system = body.messages?.find((m) => m.role === "system")?.content ?? ""
     const match = system.match(/ATURAN-KHUSUS[^\n]*/)

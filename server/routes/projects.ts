@@ -22,6 +22,7 @@ const updateSchema = z.object({
     })
     .optional(),
 })
+export const memorySchema = z.object({ content: z.string().max(8000, "Memori maksimal 8000 karakter") })
 const versionSchema = z.object({ message: z.string().trim().min(1, "Isi keterangan versi").max(200) })
 
 export const messageSchema = z.object({
@@ -79,6 +80,15 @@ export function projectsRouter(store: ProjectStore): Router {
   r.get("/:id/versions/:sha/diff", handle(async (req, res) => sendData(res, await store.diffOf(String(req.params.id), String(req.params.sha)))))
 
   r.post("/:id/versions/:sha/restore", handle(async (req, res) => sendData(res, await store.restoreVersion(String(req.params.id), String(req.params.sha)))))
+
+  r.get("/:id/memory", handle(async (req, res) => sendData(res, { content: await store.readMemory(String(req.params.id)) })))
+
+  r.put("/:id/memory", handle(async (req, res) => {
+    const body = parseBody(memorySchema, req, res)
+    if (!body) return
+    await store.writeMemory(String(req.params.id), body.content)
+    sendData(res, { content: body.content })
+  }))
 
   r.get("/:id/messages", handle(async (req, res) => sendData(res, await store.messages(String(req.params.id)))))
 

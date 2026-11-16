@@ -92,3 +92,8 @@ body {
 .chat-markdown ol {
   list-style: decimal;
 }
+
+/* Toasts stay above dialogs (dialogs sit above runframe's viewer overlays). */
+[data-rht-toaster] {
+  z-index: 200000 !important;
+}

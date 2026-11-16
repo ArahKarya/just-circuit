@@ -75,6 +75,14 @@ describe("project store", () => {
     expect((await readdir(path.join(dataDir, "trash")))[0]).toContain(id)
   })
 
+  it("keeps the AI memory in .cds and out of the editor", async () => {
+    const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "1" } })
+    expect(await store.readMemory(id)).toBe("")
+    await store.writeMemory(id, "- LDO terpisah\n")
+    expect(await store.readMemory(id)).toBe("- LDO terpisah\n")
+    expect(Object.keys((await store.get(id)).files)).toEqual([ENTRY])
+  })
+
   it("keeps chat history next to the project", async () => {
     const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "1" } })
     await store.changeMessages(id, (m) => [...m, { id: "m1", projectId: id, role: "user", content: "hai", createdAt: 1 }])

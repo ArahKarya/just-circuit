@@ -43,6 +43,7 @@ export function extractFiles(reply: string, entrypoint: string): ExtractedFile[]
 /** Text of the reply with code blocks replaced by a short marker, for display. */
 export function stripCodeBlocks(reply: string): string {
   return reply.replace(FENCE, (_match, info: string) => {
+    if (/^memory\b/i.test(info.trim())) return "\n[memori diperbarui]\n"
     const edited = info.match(/\bedit\s*=\s*["']?([^\s"']+)/i)?.[1]
     if (edited) return `\n[edit: ${edited}]\n`
     const path = parsePath(info)

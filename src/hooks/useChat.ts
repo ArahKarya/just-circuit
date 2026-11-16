@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import toast from "react-hot-toast"
 import { toTurns } from "../lib/chat-history"
 import { useLiveData } from "../lib/live-data"
 import { streamChat } from "../lib/llm-client"
 import { filesKey, withFiles } from "../lib/project-ops"
 import { chatConnection, connectionProblem, DEFAULT_AI_SETTINGS, DEFAULT_HISTORY_LIMIT, temperatureFor } from "../lib/providers"
 import { changesFromReply } from "../lib/reply-changes"
-import { messagesRepo, projectsRepo, settingsRepo, TOPICS } from "../lib/repo"
+import { appendMemory, extractMemoryNotes } from "../lib/memory"
+import { memoryRepo, messagesRepo, projectsRepo, settingsRepo, TOPICS } from "../lib/repo"
 import { buildEditFailureRequest, buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
 import type { ChatMessage, Project, RunStatus } from "../lib/types"
 
@@ -45,6 +47,21 @@ export interface ChatState {
   stop: () => void
   undo: (message: ChatMessage) => Promise<void>
   clear: () => Promise<void>
+}
+
+/** Stores notes the AI asked to remember; failures are reported but never block the reply. */
+async function saveMemoryNotes(projectId: string, reply: string, projectMemory: string, globalMemory: string): Promise<void> {
+  const notes = extractMemoryNotes(reply)
+  try {
+    const nextProject = appendMemory(projectMemory, notes.project)
+    const nextGlobal = appendMemory(globalMemory, notes.global)
+    if (nextProject !== null) await memoryRepo.writeProject(projectId, nextProject)
+    if (nextGlobal !== null) await memoryRepo.writeGlobal(nextGlobal)
+    const saved = (nextProject !== null ? notes.project.length : 0) + (nextGlobal !== null ? notes.global.length : 0)
+    if (saved > 0) toast.success(`AI mencatat ${saved} hal ke memori`)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : "Gagal menyimpan memori")
+  }
 }
 
 function errorText(error: unknown): string {
@@ -96,8 +113,13 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         messagesRepo.add({ id: crypto.randomUUID(), projectId: current.id, createdAt: Date.now(), ...message })
       try {
         // Read settings and history from the database so nothing saved a moment ago is missed.
-        const settings = { ...DEFAULT_AI_SETTINGS, ...(await settingsRepo.read()) }
-        const history = await messagesRepo.list(current.id)
+        const [stored, history, projectMemory, globalMemory] = await Promise.all([
+          settingsRepo.read(),
+          messagesRepo.list(current.id),
+          memoryRepo.readProject(current.id).catch(() => ""),
+          memoryRepo.readGlobal().catch(() => ""),
+        ])
+        const settings = { ...DEFAULT_AI_SETTINGS, ...stored }
         await addMessage({ role: "user", content: text })
         const connection = chatConnection(settings, current.settings, isAutoFix)
         const problem = connectionProblem(connection)
@@ -111,7 +133,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         abortRef.current = controller
         const result = await streamChat({
           connection,
-          system: buildSystemPrompt(current.files, current.entrypoint, current.settings?.aiRules),
+          system: buildSystemPrompt(current.files, current.entrypoint, { projectRules: current.settings?.aiRules, projectMemory, globalMemory }),
           messages: [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), { role: "user", content: text }],
           temperature: temperatureFor(connection, settings.temperature),
           maxOutputTokens: settings.maxOutputTokens,
@@ -122,6 +144,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         const content = result.truncated
           ? `${result.text}\n\n(Jawaban terpotong karena batas token. Naikkan "Maks token jawaban" di Pengaturan.)`
           : result.text
+        await saveMemoryNotes(current.id, result.text, projectMemory, globalMemory)
         const { changes, failures } = changesFromReply(result.text, current.files, current.entrypoint)
         const paths = Object.keys(changes)
         const note = failures.length > 0 ? `\n\n(Edit gagal diterapkan:\n${failures.map((f) => `- ${f}`).join("\n")})` : ""

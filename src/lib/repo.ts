@@ -10,6 +10,8 @@ export const TOPICS = {
   settings: "settings",
   workspaces: "workspaces",
   preferences: "preferences",
+  globalMemory: "memory:global",
+  projectMemory: (id: string) => `memory:${id}`,
   trash: "trash",
 } as const
 
@@ -55,6 +57,19 @@ export const projectsRepo = {
   async move(id: string, workspaceId: string): Promise<void> {
     await api.post<ProjectSummary>(`${projectUrl(id)}/move`, { workspaceId })
     notifyChange(TOPICS.projects, TOPICS.workspaces, TOPICS.project(id))
+  },
+}
+
+export const memoryRepo = {
+  readGlobal: async () => (await api.get<{ content: string }>("/api/memory")).content,
+  readProject: async (projectId: string) => (await api.get<{ content: string }>(`${projectUrl(projectId)}/memory`)).content,
+  async writeGlobal(content: string): Promise<void> {
+    await api.put("/api/memory", { content })
+    notifyChange(TOPICS.globalMemory)
+  },
+  async writeProject(projectId: string, content: string): Promise<void> {
+    await api.put(`${projectUrl(projectId)}/memory`, { content })
+    notifyChange(TOPICS.projectMemory(projectId))
   },
 }
 

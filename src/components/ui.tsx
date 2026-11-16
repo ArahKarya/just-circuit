@@ -75,7 +75,8 @@ export function Modal({ title, onClose, children, footer, wide }: ModalProps) {
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onMouseDown={onClose}>
+    // Above runframe's viewer toolbars, which use very high z-indexes.
+    <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 p-4" onMouseDown={onClose}>
       <div
         role="dialog"
         aria-modal="true"

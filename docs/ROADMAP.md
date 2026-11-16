@@ -65,8 +65,10 @@ Rencana awal:
 - [x] Tombol cepat `tsci build`, `git log`.
 - [x] Keamanan: login + Host + Origin, env shell allowlist, batas sesi, heartbeat, backpressure, frame besar tidak menjatuhkan server; mati default di produksi.
 
-## Fase 4 — AI agen (opsional)
+## Fase 4 — AI lebih pintar
 
-- AI memakai tools: baca file, jalankan build, baca error, cari part JLCPCB.
-- AI mengusulkan perintah terminal, dijalankan setelah disetujui.
-- Panel DRC/ERC yang bisa diklik ke komponen.
+- [x] Memori AI: memori proyek (`.cds/memory.md`) dan global (`CDS_DATA_DIR/memory.md`), selalu dikirim ke AI; AI mencatat sendiri lewat blok `memory`; bisa diedit di Pengaturan → Memori.
+- [ ] Library komponen: simpan file/folder ke library, sisipkan ke proyek lain, AI tahu isi library; panduan paket `@tsci/...` dan npm.
+- [ ] AI agen: baca file, jalankan build, baca error, cari part JLCPCB.
+- [ ] AI mengusulkan perintah terminal, dijalankan setelah disetujui.
+- [ ] Panel DRC/ERC yang bisa diklik ke komponen.

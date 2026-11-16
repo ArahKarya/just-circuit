@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto"
-import { mkdir, readdir, rename, rm } from "node:fs/promises"
+import { mkdir, readdir, readFile, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { ConflictError, NotFoundError } from "./errors.js"
-import { createKeyedLock, isDirectory, isRegularFile, readOwnJson, writeJsonFile } from "./fs-utils.js"
+import { createKeyedLock, isDirectory, isRegularFile, readOwnJson, writeFileAtomic, writeJsonFile } from "./fs-utils.js"
 import { InvalidPathError, isEditablePath, listEditableFiles, readEditableFiles, syncEditableFiles, type FileMap } from "./project-files.js"
 import { commitAll, ensureRepo, filesAt, hasRepo, HistoryUnavailableError, isDirty, isGitAvailable, listVersions, versionLabel, versionDiff, type Version } from "./history.js"
 import { scaffoldFiles } from "./scaffold.js"
@@ -109,6 +109,8 @@ interface TrashInfo {
   deletedAt: number
 }
 const CHAT_FILE = path.join(".cds", "chat.json")
+const MEMORY_FILE = path.join(".cds", "memory.md")
+export const MAX_MEMORY_CHARS = 8000
 
 export function isValidId(id: string): boolean {
   return ID_PATTERN.test(id)
@@ -412,10 +414,21 @@ export function createProjectStore(dataDir: string) {
     })
   }
 
+  /** Notes the AI keeps about this project (decisions, pin assignments…). */
+  async function readMemory(id: string): Promise<string> {
+    const file = path.join(await locate(id), MEMORY_FILE)
+    if (!(await isRegularFile(file))) return ""
+    return readFile(file, "utf8")
+  }
+
+  function writeMemory(id: string, content: string): Promise<void> {
+    return withLock(id, async () => writeFileAtomic(path.join(await locate(id), MEMORY_FILE), content.slice(0, MAX_MEMORY_CHARS)))
+  }
+
   /** Folder of a project on disk (the terminal starts there). */
   const pathOf = (id: string): Promise<string> => locate(id)
 
-  return { pathOf, list, get, create, update, remove, move, versions, diffOf, saveVersion, restoreVersion, listTrash, restore, purge, purgeOlderThan, messages, changeMessages, workspacesDir }
+  return { pathOf, readMemory, writeMemory, list, get, create, update, remove, move, versions, diffOf, saveVersion, restoreVersion, listTrash, restore, purge, purgeOlderThan, messages, changeMessages, workspacesDir }
 }
 
 export type ProjectStore = ReturnType<typeof createProjectStore>
