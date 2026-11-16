@@ -27,7 +27,7 @@ test("dragging a component in the layout editor moves it in the code", async ({ 
   // R1 already had pcbX in code, so the code is updated instead of manual-edits.json.
   await page.getByRole("tab", { name: "Kode" }).click()
   await expect(page.locator(".monaco-editor")).toContainText(/pcbX=\{0\}\s+pcbY=\{-\d/)
-  await expect(page.getByRole("tab", { name: /manual-edits\.json/ })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "manual-edits.json" })).toHaveCount(0)
   await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
   await page.waitForTimeout(1500)
   await expect(page.getByText("Manual Edit Conflict")).toHaveCount(0)
@@ -65,7 +65,7 @@ test("components without pcbX/pcbY are saved to manual-edits.json", async ({ pag
   await page.getByRole("button", { name: "Selesai" }).click()
 
   await expect(page.locator(".monaco-editor")).toContainText("manualEdits={manualEdits}")
-  await page.getByRole("tab", { name: /manual-edits\.json/ }).click()
+  await page.getByRole("button", { name: "manual-edits.json" }).click()
   await expect(page.locator(".monaco-editor")).toContainText("pcb_placements")
   await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
   await page.waitForTimeout(1500)

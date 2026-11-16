@@ -34,7 +34,8 @@ export const projectsRepo = {
    * Does not notify the project topic: the editor already has this content.
    */
   async save(project: Project, commitMessage?: string): Promise<Project> {
-    const saved = await api.put<Project>(projectUrl(project.id), { name: project.name, entrypoint: project.entrypoint, files: project.files, commitMessage })
+    // The name is left out on purpose: it only changes through rename(), so a late autosave can't undo a rename.
+    const saved = await api.put<Project>(projectUrl(project.id), { entrypoint: project.entrypoint, files: project.files, commitMessage })
     notifyChange(TOPICS.projects, ...(commitMessage ? [TOPICS.versions(project.id)] : []))
     return saved
   },

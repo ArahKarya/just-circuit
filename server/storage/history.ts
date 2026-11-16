@@ -10,7 +10,8 @@ const run = promisify(execFile)
 
 /** Hooks, signing and user config never apply to CDS's own commits. */
 const GIT_FLAGS = ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "user.name=CDS", "-c", "user.email=cds@localhost", "-c", "core.quotepath=off"]
-const GIT_ENV = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" }
+/** Ignore system and global git config (autocrlf, templates, aliases): CDS commits must be predictable. */
+const GIT_ENV = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" }
 const MAX_OUTPUT = 32 * 1024 * 1024
 const MAX_DIFF_CHARS = 300_000
 const SHA = /^[0-9a-f]{7,40}$/
@@ -46,7 +47,7 @@ export function isGitAvailable(): Promise<boolean> {
   return gitAvailable
 }
 
-async function hasRepo(dir: string): Promise<boolean> {
+export async function hasRepo(dir: string): Promise<boolean> {
   try {
     await access(path.join(dir, ".git"))
     return true
@@ -98,6 +99,12 @@ async function assertCommit(dir: string, sha: string): Promise<string> {
   } catch {
     throw new NotFoundError("Versi tidak ditemukan")
   }
+}
+
+/** "abc1234: message" for a version, used when restoring it. */
+export async function versionLabel(dir: string, sha: string): Promise<string> {
+  const full = await assertCommit(dir, sha)
+  return (await git(dir, ["log", "-1", "--format=%h: %s", full])).trim()
 }
 
 /** Patch of one version against its parent (or the whole tree for the first one). */

@@ -12,6 +12,16 @@ export interface ImportedProject {
 
 export class ZipImportError extends Error {}
 
+/** Checked before decompressing, so a tiny zip bomb can't freeze the tab. */
+const MAX_TOTAL_BYTES = 20 * 1024 * 1024
+const MAX_PACKAGE_JSON_BYTES = 64 * 1024
+
+/** Uncompressed size as declared in the zip directory (JSZip keeps it on an internal field). */
+function declaredSize(entry: JSZip.JSZipObject): number {
+  const data = (entry as unknown as { _data?: { uncompressedSize?: number } })._data
+  return typeof data?.uncompressedSize === "number" ? data.uncompressedSize : 0
+}
+
 const ENTRY_CANDIDATES = ["index.circuit.tsx", "index.tsx", "main.circuit.tsx", "index.board.tsx"]
 
 /** Drops one wrapping folder (zips made from a folder put everything under "<name>/"). */
@@ -46,10 +56,14 @@ export async function readProjectZip(data: ArrayBuffer | Uint8Array, fileName: s
   const files: Record<string, string> = {}
   const skipped: string[] = []
   let packageJson: { name?: string; main?: string } = {}
+  let totalBytes = 0
+  const seen = new Set<string>()
 
   for (const entry of entries) {
     const path = strip(entry.name)
+    const size = declaredSize(entry)
     if (path === "package.json") {
+      if (size > MAX_PACKAGE_JSON_BYTES) continue
       try {
         packageJson = JSON.parse(await entry.async("string")) as typeof packageJson
       } catch {
@@ -58,10 +72,14 @@ export async function readProjectZip(data: ArrayBuffer | Uint8Array, fileName: s
       continue
     }
     if (SCAFFOLD_FILES.has(path)) continue
-    if (!isEditablePath(path) || Object.keys(files).length >= MAX_FILES) {
+    // Case-insensitive duplicates (A.tsx / a.tsx) would overwrite each other on macOS.
+    if (!isEditablePath(path) || Object.keys(files).length >= MAX_FILES || size > MAX_FILE_BYTES || seen.has(path.toLowerCase())) {
       skipped.push(path)
       continue
     }
+    totalBytes += size
+    if (totalBytes > MAX_TOTAL_BYTES) throw new ZipImportError("Isi ZIP lebih dari 20 MB")
+    seen.add(path.toLowerCase())
     const content = await entry.async("string")
     if (new TextEncoder().encode(content).length > MAX_FILE_BYTES) {
       skipped.push(path)

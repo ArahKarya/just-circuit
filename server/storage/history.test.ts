@@ -25,7 +25,7 @@ describe("version history", () => {
     await writeFile(path.join(dir, ENTRY), "v2-manual")
     await store.update(id, { files: { [ENTRY]: "v3-ai" }, commitMessage: "AI: ganti resistor" })
     const versions = await store.versions(id)
-    expect(versions.map((v) => v.message)).toEqual(["AI: ganti resistor", "Perubahan manual", "Riwayat dimulai"])
+    expect(versions.map((v) => v.message)).toEqual(["AI: ganti resistor", "Perubahan di luar editor", "Riwayat dimulai"])
     expect(versions[0].files).toEqual([ENTRY])
 
     const { diff } = await store.diffOf(id, versions[0].sha)
@@ -35,6 +35,27 @@ describe("version history", () => {
     const restored = await store.restoreVersion(id, versions[2].shortSha)
     expect(restored.files[ENTRY]).toBe("v1")
     expect((await store.versions(id))[0].message).toBe("Kembali ke versi " + versions[2].shortSha + ": Riwayat dimulai")
+  })
+
+  it("records terminal edits before an autosave replaces them, but not the editor's own autosaves", async () => {
+    const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "v1" } })
+    const dir = path.join(dataDir, "workspaces", "default", id)
+    await store.update(id, { files: { [ENTRY]: "v2" } })
+    await store.update(id, { files: { [ENTRY]: "v3" } })
+    expect((await store.versions(id)).map((v) => v.message)).toEqual(["Riwayat dimulai"])
+
+    await writeFile(path.join(dir, "lib.tsx"), "dari terminal")
+    await store.update(id, { files: { [ENTRY]: "v4" } })
+    const versions = await store.versions(id)
+    expect(versions[0].message).toBe("Perubahan di luar editor")
+    expect(versions[0].files.sort()).toEqual([ENTRY, "lib.tsx"])
+  })
+
+  it("keeps typing since the last version separate from an AI change", async () => {
+    const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "v1" } })
+    await store.update(id, { files: { [ENTRY]: "v2-typed" } })
+    await store.update(id, { files: { [ENTRY]: "v3-ai" }, commitMessage: "AI: x" })
+    expect((await store.versions(id)).map((v) => v.message)).toEqual(["AI: x", "Perubahan manual", "Riwayat dimulai"])
   })
 
   it("saves a named version only when something changed", async () => {

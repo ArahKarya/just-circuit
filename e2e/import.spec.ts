@@ -12,6 +12,6 @@ test("imports a JLCPCB part into the project", async ({ page }) => {
   await page.getByRole("button", { name: "Import", exact: true }).click()
 
   await expect(page.getByText(/C46749 diimpor sebagai/).first()).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole("tab", { name: /imports\/C46749\.tsx/ })).toBeVisible()
+  await expect(page.getByRole("list", { name: "File proyek" }).getByRole("button", { name: "C46749.tsx" })).toBeVisible()
   await expect(page.locator(".monaco-editor")).toContainText('from "./imports/C46749"')
 })

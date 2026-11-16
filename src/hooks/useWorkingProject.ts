@@ -29,16 +29,32 @@ export function useWorkingProject(stored: Project | undefined, save: (project: P
   const [project, setProject] = useState<Project | undefined>(stored)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pending = useRef<Project | null>(null)
+  /** Saves run one after another so an older snapshot can never land after a newer one. */
+  const queue = useRef<Promise<void>>(Promise.resolve())
+  const inFlight = useRef(0)
   const latest = useRef(project)
   latest.current = project
+
+  const enqueue = useCallback(
+    (next: Project, commitMessage?: string): Promise<void> => {
+      inFlight.current += 1
+      const run = queue.current.then(() => save(next, commitMessage))
+      queue.current = run.catch(() => undefined)
+      return run.finally(() => {
+        inFlight.current -= 1
+      })
+    },
+    [save],
+  )
 
   const flushNow = useCallback(async () => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
     const next = pending.current
     pending.current = null
-    if (next) await save(next)
-  }, [save])
+    if (next) await enqueue(next)
+    else await queue.current
+  }, [enqueue])
 
   const flush = useCallback(() => {
     flushNow().catch((error: unknown) => reportSaveError(error))
@@ -52,9 +68,15 @@ export function useWorkingProject(stored: Project | undefined, save: (project: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stored?.id])
 
-  // Take the server copy when it is reloaded (rename, restored version, terminal) unless typing is pending.
+  // Take the server copy when it is reloaded (restored version, terminal) unless local changes are
+  // still pending or being saved; the name always comes from the server (it changes only by rename).
   useEffect(() => {
-    if (stored && !pending.current) setProject(stored)
+    if (!stored) return
+    if (!pending.current && inFlight.current === 0) {
+      setProject(stored)
+      return
+    }
+    setProject((current) => (current && current.id === stored.id ? { ...current, name: stored.name } : current))
   }, [stored])
 
   useEffect(() => flush, [flush])
@@ -75,9 +97,9 @@ export function useWorkingProject(stored: Project | undefined, save: (project: P
       timer.current = null
       pending.current = null
       setProject(next)
-      await save(next, commitMessage)
+      await enqueue(next, commitMessage)
     },
-    [save],
+    [enqueue],
   )
 
   const update = useCallback(

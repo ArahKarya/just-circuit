@@ -17,11 +17,12 @@ import { useAiSettings } from "./hooks/useAiSettings"
 import { useAuth } from "./hooks/useAuth"
 import { useBrowserMigration } from "./hooks/useBrowserMigration"
 import { useChat } from "./hooks/useChat"
+import { useFileActions } from "./hooks/useFileActions"
 import { useProjects } from "./hooks/useProjects"
 import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
-import { addImportedComponent, withFiles, withoutFile } from "./lib/project-ops"
+import { addImportedComponent, withFiles } from "./lib/project-ops"
 import { activeConnection, connectionProblem } from "./lib/providers"
 import type { RunStatus } from "./lib/types"
 
@@ -64,6 +65,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const project = working.project
 
   const chat = useChat({ project, runStatus, onApplyProject: working.apply })
+  const fileActions = useFileActions(project, working, activeFile ?? undefined, setActiveFile)
   const connection = activeConnection(ai.settings)
   const problem = connectionProblem(connection)
   const currentFile = project && activeFile && project.files[activeFile] !== undefined ? activeFile : project?.entrypoint
@@ -161,7 +163,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <section className="flex h-[50%] min-h-0 flex-col border-line bg-panel lg:h-auto lg:w-[440px] lg:shrink-0 lg:border-r">
+        <section className={`flex h-[50%] min-h-0 flex-col border-line bg-panel lg:h-auto lg:shrink-0 lg:border-r ${leftTab === "code" ? "lg:w-[600px]" : "lg:w-[440px]"}`}>
           <div className="flex shrink-0 gap-1 border-b border-line p-1.5" role="tablist">
             {([["chat", "Chat AI", MessageSquare], ["code", "Kode", Code2]] as const).map(([id, label, Icon]) => (
               <button
@@ -186,14 +188,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
                 activeFile={currentFile ?? project.entrypoint}
                 onSelectFile={setActiveFile}
                 onChange={(path, content) => working.edit(withFiles(project, { [path]: content }))}
-                onDeleteFile={(path) => {
-                  if (path === MANUAL_EDITS_FILE) {
-                    // The entrypoint imports this file, so reset it instead of deleting it.
-                    void working.apply(withFiles(project, { [path]: "{}\n" })).then(() => toast.success("Posisi manual direset"))
-                    return
-                  }
-                  void working.apply(withoutFile(project, path))
-                }}
+                {...fileActions}
               />
             )}
           </div>

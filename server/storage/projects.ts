@@ -1,10 +1,10 @@
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import { mkdir, readdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { ConflictError, NotFoundError } from "./errors.js"
-import { createKeyedLock, isDirectory, readOwnJson, writeJsonFile } from "./fs-utils.js"
+import { createKeyedLock, isDirectory, isRegularFile, readOwnJson, writeJsonFile } from "./fs-utils.js"
 import { InvalidPathError, isEditablePath, listEditableFiles, readEditableFiles, syncEditableFiles, type FileMap } from "./project-files.js"
-import { commitAll, ensureRepo, filesAt, HistoryUnavailableError, isDirty, isGitAvailable, listVersions, versionDiff, type Version } from "./history.js"
+import { commitAll, ensureRepo, filesAt, hasRepo, HistoryUnavailableError, isDirty, isGitAvailable, listVersions, versionLabel, versionDiff, type Version } from "./history.js"
 import { scaffoldFiles } from "./scaffold.js"
 
 export interface ProjectMeta {
@@ -53,6 +53,26 @@ export interface ProjectPatch {
 }
 
 const MANUAL_CHANGES = "Perubahan manual"
+const OUTSIDE_CHANGES = "Perubahan di luar editor"
+/** Hashes of the files CDS itself last wrote, to tell editor autosaves from terminal edits. */
+const SYNC_FILE = path.join(".cds", "synced.json")
+
+function hashFiles(files: FileMap): Record<string, string> {
+  return Object.fromEntries(Object.entries(files).map(([file, content]) => [file, createHash("sha1").update(content).digest("hex")]))
+}
+
+async function rememberSync(dir: string, files: FileMap): Promise<void> {
+  await writeJsonFile(path.join(dir, SYNC_FILE), hashFiles(files))
+}
+
+/** True when the files on disk differ from what CDS last wrote (someone used the terminal or tsci). */
+async function changedOutsideEditor(dir: string): Promise<boolean> {
+  const remembered = await readOwnJson<Record<string, string> | null>(path.join(dir, SYNC_FILE), null).catch(() => null)
+  if (!remembered) return false
+  const onDisk = hashFiles(await readEditableFiles(dir))
+  const keys = new Set([...Object.keys(remembered), ...Object.keys(onDisk)])
+  return [...keys].some((key) => remembered[key] !== onDisk[key])
+}
 
 export { NotFoundError } from "./errors.js"
 
@@ -130,7 +150,7 @@ export function createProjectStore(dataDir: string) {
     if (!isValidId(id)) throw new NotFoundError("Proyek tidak ditemukan")
     for (const workspace of await workspaceIds()) {
       const dir = path.join(workspacesDir, workspace, id)
-      if ((await isDirectory(dir)) && (await isDirectory(path.join(dir, ".cds")))) return dir
+      if ((await isDirectory(dir)) && (await isRegularFile(path.join(dir, META_FILE)))) return dir
     }
     throw new NotFoundError("Proyek tidak ditemukan")
   }
@@ -170,7 +190,8 @@ export function createProjectStore(dataDir: string) {
     if (!isValidId(workspaceId)) throw new NotFoundError("Workspace tidak ditemukan")
     assertEntrypoint(input.entrypoint, input.files)
     const workspaceDir = path.join(workspacesDir, workspaceId)
-    await mkdir(workspaceDir, { recursive: true })
+    // Only the default workspace is created on demand; others must exist (not deleted in another tab).
+    if (workspaceId === DEFAULT_WORKSPACE) await mkdir(workspaceDir, { recursive: true })
     if (!(await isDirectory(workspaceDir))) throw new NotFoundError("Workspace tidak ditemukan")
     let id = newProjectId(input.name)
     // Non-recursive mkdir fails on an existing folder, so an id collision never merges projects.
@@ -200,6 +221,7 @@ export function createProjectStore(dataDir: string) {
       }
       await mkdir(path.join(dir, ".cds"))
       await writeJsonFile(path.join(dir, META_FILE), meta)
+      await rememberSync(dir, input.files)
     } catch (error) {
       await rm(dir, { recursive: true, force: true })
       throw error
@@ -217,12 +239,15 @@ export function createProjectStore(dataDir: string) {
         assertEntrypoint(patch.entrypoint ?? meta.entrypoint, patch.files ?? (await readEditableFiles(dir)))
       }
       const record = patch.commitMessage !== undefined && (await isGitAvailable())
-      if (record) {
-        // Keep hand edits (editor, terminal) as their own version so the recorded change stays clean.
-        await ensureRepo(dir)
-        if (await isDirty(dir)) await commitAll(dir, MANUAL_CHANGES)
+      if (record) await ensureRepo(dir)
+      // Keep edits made outside the editor (terminal, tsci) as a version before the browser's copy replaces them.
+      if (patch.files && (await hasRepo(dir)) && (await changedOutsideEditor(dir))) await commitAll(dir, OUTSIDE_CHANGES)
+      // Typing since the last version becomes its own version, so a recorded (AI) change stays a clean diff.
+      if (record && (await isDirty(dir))) await commitAll(dir, MANUAL_CHANGES)
+      if (patch.files) {
+        await syncEditableFiles(dir, patch.files)
+        await rememberSync(dir, patch.files)
       }
-      if (patch.files) await syncEditableFiles(dir, patch.files)
       if (patch.entrypoint !== undefined && patch.entrypoint !== meta.entrypoint) {
         for (const [file, content] of Object.entries(scaffoldFiles({ id, entrypoint: patch.entrypoint }))) {
           await writeJsonFile(path.join(dir, file), content)
@@ -268,11 +293,15 @@ export function createProjectStore(dataDir: string) {
       const meta = await readMeta(dir)
       const entrypoint = meta.entrypoint in files ? meta.entrypoint : (Object.keys(files).find((f) => f.endsWith(".circuit.tsx")) ?? meta.entrypoint)
       assertEntrypoint(entrypoint, files)
+      const label = await versionLabel(dir, sha)
       await syncEditableFiles(dir, files)
+      await rememberSync(dir, files)
+      if (entrypoint !== meta.entrypoint) {
+        for (const [file, content] of Object.entries(scaffoldFiles({ id, entrypoint }))) await writeJsonFile(path.join(dir, file), content)
+      }
       const next: ProjectMeta = { ...meta, entrypoint, updatedAt: Date.now() }
       await writeJsonFile(path.join(dir, META_FILE), next)
-      const target = (await listVersions(dir)).find((v) => v.sha.startsWith(sha))
-      await commitAll(dir, `Kembali ke versi ${target?.shortSha ?? sha.slice(0, 7)}${target ? `: ${target.message}` : ""}`)
+      await commitAll(dir, `Kembali ke versi ${label}`)
       return { ...next, files: await readEditableFiles(dir) }
     })
   }
@@ -328,7 +357,11 @@ export function createProjectStore(dataDir: string) {
   }
 
   /** Puts a trashed project back into its workspace (or the default one if that is gone). */
-  async function restore(entryId: string): Promise<ProjectMeta> {
+  function restore(entryId: string): Promise<ProjectMeta> {
+    return withLock(`trash:${entryId}`, () => restoreUnlocked(entryId))
+  }
+
+  async function restoreUnlocked(entryId: string): Promise<ProjectMeta> {
     const dir = trashEntryDir(entryId)
     if (!(await isDirectory(dir))) throw new NotFoundError("Item tempat sampah tidak ditemukan")
     const projectId = TRASH_ENTRY.exec(entryId)?.[2] ?? ""
@@ -343,8 +376,8 @@ export function createProjectStore(dataDir: string) {
     return readMeta(target)
   }
 
-  async function purge(entryId: string): Promise<void> {
-    await rm(trashEntryDir(entryId), { recursive: true, force: true })
+  function purge(entryId: string): Promise<void> {
+    return withLock(`trash:${entryId}`, () => rm(trashEntryDir(entryId), { recursive: true, force: true }))
   }
 
   /** Permanently removes trash entries deleted before `cutoff`; returns how many. */
@@ -359,7 +392,8 @@ export function createProjectStore(dataDir: string) {
   }
 
   function changeMessages(id: string, change: (current: ChatMessageRecord[]) => ChatMessageRecord[]): Promise<ChatMessageRecord[]> {
-    return withLock(`${id}:chat`, async () => {
+    // Same lock as move/trash/update, so a chat write never recreates a folder that just moved.
+    return withLock(id, async () => {
       const file = path.join(await locate(id), CHAT_FILE)
       const next = change(await readOwnJson<ChatMessageRecord[]>(file, [])).slice(-MAX_MESSAGES)
       await writeJsonFile(file, next)

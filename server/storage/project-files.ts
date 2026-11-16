@@ -90,16 +90,18 @@ export async function syncEditableFiles(root: string, next: FileMap): Promise<vo
   })
   const current = await readEditableFiles(root)
   await mkdir(root, { recursive: true })
-  for (const { full, content } of targets) {
-    const relative = path.relative(root, full).split(path.sep).join("/")
-    if (current[relative] === content) continue
-    await assertNoSymlinkEscape(root, full)
-    await writeFileAtomic(full, content)
-  }
+  // Delete first: on case-insensitive disks (macOS) "A.tsx" -> "a.tsx" is the same file,
+  // and deleting after the write would remove the renamed file.
   for (const relative of Object.keys(current)) {
-    if (relative in next) continue
+    if (Object.hasOwn(next, relative)) continue
     const full = path.join(root, relative)
     await rm(full, { force: true })
     await removeEmptyParents(root, full)
+  }
+  for (const { full, content } of targets) {
+    const relative = path.relative(root, full).split(path.sep).join("/")
+    if (current[relative] === content && Object.hasOwn(current, relative)) continue
+    await assertNoSymlinkEscape(root, full)
+    await writeFileAtomic(full, content)
   }
 }

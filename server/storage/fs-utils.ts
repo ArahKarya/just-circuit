@@ -60,3 +60,12 @@ export async function readOwnJson<T>(file: string, fallback: T): Promise<T> {
   return readJsonFile<T>(file, fallback)
 }
 
+
+/** Regular file, not a symlink or folder. */
+export async function isRegularFile(file: string): Promise<boolean> {
+  try {
+    return (await lstat(file)).isFile()
+  } catch {
+    return false
+  }
+}

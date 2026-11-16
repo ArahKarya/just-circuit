@@ -73,8 +73,15 @@ export function createWorkspaceStore(projects: ProjectStore) {
     if ((await projects.list(id)).length > 0) throw new ConflictError("Pindahkan atau hapus proyeknya dulu")
     const leftovers = (await readdir(dir)).filter((name) => name !== INFO_FILE)
     if (leftovers.length > 0) throw new ConflictError(`Folder workspace masih berisi: ${leftovers.slice(0, 3).join(", ")}`)
+    const info = await readOwnJson<WorkspaceInfo | null>(path.join(dir, INFO_FILE), null).catch(() => null)
     await rm(path.join(dir, INFO_FILE), { force: true })
-    await rmdir(dir)
+    try {
+      await rmdir(dir)
+    } catch (error) {
+      // Something landed in the folder meanwhile: keep the workspace with its name.
+      if (info) await writeJsonFile(path.join(dir, INFO_FILE), info)
+      throw new ConflictError(`Workspace tidak kosong: ${(error as Error).message}`)
+    }
   }
 
   return { list, create, rename, remove }

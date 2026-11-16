@@ -34,7 +34,8 @@ Status per 16 Nov 2026. Aplikasi hanya versi web. Keputusan: proyek pindah ke pe
 - [x] Impor ZIP (folder tsci atau unduhan CDS); `node_modules`, `dist`, file biner dilewati.
 - [x] Cari dan urutkan proyek.
 - [x] Riwayat versi git per proyek: versi otomatis tiap perubahan AI / undo / impor part, "Simpan versi" manual, lihat diff, kembalikan versi (edit tangan disimpan dulu sebagai "Perubahan manual").
-- [ ] Pohon file dengan folder + cari isi semua file.
+- [x] Penjelajah file: folder, file baru, ganti nama/pindah (file & folder), hapus, jadikan file utama, cari teks di semua file lalu loncat ke barisnya.
+- [x] Edit dari terminal/tsci yang belum tercatat disimpan sebagai versi "Perubahan di luar editor" sebelum disimpan ulang dari browser.
 
 Rencana awal:
 

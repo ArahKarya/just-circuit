@@ -11,6 +11,8 @@ test("keeps code, chat and settings on the server across reloads; never returns 
   await page.getByLabel("API key").fill("sk-test-rahasia-123")
   await page.getByLabel("Model").fill("mock-1")
   await page.getByRole("button", { name: "Simpan" }).click()
+  // The dialog closes once the server has stored the settings.
+  await expect(page.getByRole("dialog", { name: "Pengaturan AI" })).toBeHidden()
 
   const settings = await (await page.request.get("/api/settings")).text()
   expect(settings).not.toContain("sk-test-rahasia-123")
