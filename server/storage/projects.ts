@@ -42,6 +42,7 @@ export interface ChatMessageRecord {
   appliedFiles?: string[]
   previousFiles?: FileMap
   isError?: boolean
+  toolSteps?: { name: string; detail: string; ok?: boolean; result?: string }[]
 }
 
 export interface NewProject {

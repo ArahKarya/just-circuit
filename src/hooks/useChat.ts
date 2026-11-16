@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import toast from "react-hot-toast"
 import { toTurns } from "../lib/chat-history"
-import { useLiveData } from "../lib/live-data"
+import { describeLibrary } from "../lib/library"
+import { notifyChange, useLiveData } from "../lib/live-data"
 import { streamChat } from "../lib/llm-client"
+import { appendMemory, extractMemoryNotes } from "../lib/memory"
 import { filesKey, withFiles } from "../lib/project-ops"
 import { chatConnection, connectionProblem, DEFAULT_AI_SETTINGS, DEFAULT_HISTORY_LIMIT, temperatureFor } from "../lib/providers"
 import { changesFromReply } from "../lib/reply-changes"
-import { appendMemory, extractMemoryNotes } from "../lib/memory"
-import { describeLibrary } from "../lib/library"
 import { libraryRepo, memoryRepo, messagesRepo, projectsRepo, settingsRepo, TOPICS } from "../lib/repo"
-import { buildEditFailureRequest, buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
-import type { ChatMessage, Project, RunStatus } from "../lib/types"
+import { buildAgentSystemPrompt, buildEditFailureRequest, buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
+import type { ChatMessage, Project, RunStatus, ToolStep } from "../lib/types"
 
 const REASONING_TAIL = 600
 const NO_MESSAGES: ChatMessage[] = []
@@ -33,6 +33,8 @@ interface UseChatOptions {
   runStatus: RunStatus
   /** Applies AI changes to the open project; the message records a version. */
   onApplyProject: (project: Project, commitMessage?: string) => Promise<void>
+  /** Saves pending typing (agent mode reads files from the server). */
+  flush: () => Promise<void>
 }
 
 export interface ChatState {
@@ -44,6 +46,8 @@ export interface ChatState {
   busySince: number | null
   isBusy: boolean
   autoFixRemaining: number
+  /** Agent mode: tools used so far in the current answer. */
+  toolSteps: LiveToolStep[]
   send: (text: string) => Promise<void>
   stop: () => void
   undo: (message: ChatMessage) => Promise<void>
@@ -70,7 +74,18 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : "Terjadi kesalahan yang tidak diketahui"
 }
 
-export function useChat({ project, runStatus, onApplyProject }: UseChatOptions): ChatState {
+export interface LiveToolStep extends ToolStep {
+  id: string
+}
+
+const DEFAULT_AGENT_STEPS = 12
+
+/** Tells the open editor to reload files the agent changed on the server. */
+function reloadAfterAgent(projectId: string, changed: readonly string[]): void {
+  if (changed.length > 0) notifyChange(TOPICS.project(projectId), TOPICS.versions(projectId), TOPICS.projects)
+}
+
+export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOptions): ChatState {
   const projectId = project?.id
   const messages = useLiveData(projectId ? () => messagesRepo.list(projectId) : null, projectId ? [TOPICS.messages(projectId)] : []).data ?? NO_MESSAGES
   const [streamingText, setStreamingText] = useState("")
@@ -78,6 +93,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
   const [busySince, setBusySince] = useState<number | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [autoFixRemaining, setAutoFixRemaining] = useState(0)
+  const [toolSteps, setToolSteps] = useState<LiveToolStep[]>([])
   /** Edits the AI sent that did not match the files; handed back to it like build errors. */
   const [editFailures, setEditFailures] = useState<PendingEditFix | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -110,6 +126,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
       setBusySince(Date.now())
       setStreamingText("")
       setReasoningText("")
+      setToolSteps([])
       const addMessage = (message: Omit<ChatMessage, "id" | "projectId" | "createdAt">) =>
         messagesRepo.add({ id: crypto.randomUUID(), projectId: current.id, createdAt: Date.now(), ...message })
       try {
@@ -133,9 +150,66 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
 
         const controller = new AbortController()
         abortRef.current = controller
+        const promptContext = { projectRules: current.settings?.aiRules, projectMemory, globalMemory, library: describeLibrary(library) }
+
+        if (settings.agentMode) {
+          await flush()
+          const steps: LiveToolStep[] = []
+          const updateSteps = (next: LiveToolStep[]) => {
+            steps.splice(0, steps.length, ...next)
+            setToolSteps([...next])
+          }
+          let changed: string[] = []
+          try {
+            const result = await streamChat({
+              connection,
+              system: buildAgentSystemPrompt(current.files, current.entrypoint, promptContext),
+              messages: [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), { role: "user", content: text }],
+              temperature: temperatureFor(connection, settings.temperature),
+              maxOutputTokens: settings.maxOutputTokens,
+              signal: controller.signal,
+              agent: { projectId: current.id, maxSteps: settings.agentMaxSteps ?? DEFAULT_AGENT_STEPS, versionMessage: versionMessage(text, false).replace(/^AI:/, "AI (agen):") },
+              onText: (delta) => setStreamingText((prev) => prev + delta),
+              onReasoning: (delta) => setReasoningText((prev) => (prev + delta).slice(-REASONING_TAIL)),
+              onTool: (event) => updateSteps([...steps, { id: event.id, name: event.name, detail: event.detail }]),
+              onToolResult: (event) => updateSteps(steps.map((step) => (step.id === event.id ? { ...step, ok: event.ok, result: event.detail } : step))),
+            })
+            changed = result.changedFiles
+            // Text from outside (part catalogs) could plant instructions: don't store memory from such runs.
+            if (steps.some((step) => step.name === "search_jlcpcb")) {
+              if (extractMemoryNotes(result.text).project.length + extractMemoryNotes(result.text).global.length > 0) {
+                toast("Catatan memori dari jawaban ini tidak disimpan otomatis (AI membaca data part dari luar). Salin manual kalau perlu.", { icon: "ℹ️" })
+              }
+            } else {
+              await saveMemoryNotes(current.id, result.text, projectMemory, globalMemory)
+            }
+            const content = result.truncated ? `${result.text}\n\n(Jawaban terpotong karena batas token.)` : result.text
+            await addMessage({
+              role: "assistant",
+              content: content || "(selesai tanpa ringkasan)",
+              toolSteps: steps.map(({ id: _id, ...step }) => step),
+              ...(changed.length > 0 ? { appliedFiles: changed, previousFiles: current.files } : {}),
+            })
+          } catch (error) {
+            changed = (error as { changedFiles?: string[] }).changedFiles ?? []
+            throw error
+          } finally {
+            reloadAfterAgent(current.id, changed)
+          }
+          // Let the preview check the agent's result; build errors go back to the agent.
+          if (changed.length > 0) {
+            const fresh = await projectsRepo.get(current.id).catch(() => null)
+            if (fresh && projectRef.current?.id === current.id) {
+              expectedRevision.current = filesKey(fresh.files)
+              if (!isAutoFix) setAutoFixRemaining(settings.autoFixAttempts)
+            }
+          }
+          return true
+        }
+
         const result = await streamChat({
           connection,
-          system: buildSystemPrompt(current.files, current.entrypoint, { projectRules: current.settings?.aiRules, projectMemory, globalMemory, library: describeLibrary(library) }),
+          system: buildSystemPrompt(current.files, current.entrypoint, promptContext),
           messages: [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), { role: "user", content: text }],
           temperature: temperatureFor(connection, settings.temperature),
           maxOutputTokens: settings.maxOutputTokens,
@@ -172,6 +246,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         setBusySince(null)
         setStreamingText("")
         setReasoningText("")
+        setToolSteps([])
       }
       return true
     },
@@ -238,5 +313,5 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
     await messagesRepo.clear(projectId)
   }, [projectId])
 
-  return { messages, streamingText, reasoningText, busySince, isBusy, autoFixRemaining, send, stop, undo, clear }
+  return { messages, streamingText, reasoningText, busySince, isBusy, autoFixRemaining, toolSteps, send, stop, undo, clear }
 }

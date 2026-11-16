@@ -33,6 +33,10 @@ export const messageSchema = z.object({
   appliedFiles: z.array(z.string().max(300)).optional(),
   previousFiles: fileMap.optional(),
   isError: z.boolean().optional(),
+  toolSteps: z
+    .array(z.object({ name: z.string().max(60), detail: z.string().max(400), ok: z.boolean().optional(), result: z.string().max(400).optional() }))
+    .max(100)
+    .optional(),
 })
 const messagePatchSchema = z.object({
   appliedFiles: z.array(z.string().max(300)).optional(),

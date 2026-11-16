@@ -9,6 +9,10 @@ interface TerminalPanelProps {
   projectId: string
   projectName: string
   theme: "dark" | "light"
+  /** A proposed command to type into the active shell (not executed: the user presses Enter). */
+  command: { text: string; nonce: number } | null
+  /** Called once the command was typed, so it is never typed again (e.g. when the panel reopens). */
+  onCommandDelivered: () => void
   onClose: () => void
   /** Called after the shell goes quiet, so the editor can reload files the command changed. */
   onSettled: () => void
@@ -29,7 +33,7 @@ const QUICK_COMMANDS = [
   { label: "git log", command: "git log --oneline -15", icon: History },
 ] as const
 
-export function TerminalPanel({ projectId, projectName, theme, onClose, onSettled }: TerminalPanelProps) {
+export function TerminalPanel({ projectId, projectName, theme, command, onCommandDelivered, onClose, onSettled }: TerminalPanelProps) {
   const status = useLiveData(() => api.get<{ enabled: boolean }>("/api/terminal/status"), ["terminal-status"])
   const [sessions, setSessions] = useState<Session[]>([])
   const [activeKey, setActiveKey] = useState<number | null>(null)
@@ -53,6 +57,17 @@ export function TerminalPanel({ projectId, projectName, theme, onClose, onSettle
   useEffect(() => () => {
     if (settleTimer.current) clearTimeout(settleTimer.current)
   }, [])
+
+  // Run a proposed command once a shell exists (the view queues it until its socket opens).
+  const lastNonce = useRef<number | null>(null)
+  useEffect(() => {
+    if (!command || command.nonce === lastNonce.current || activeKey === null) return
+    const handle = handles.current.get(activeKey)
+    if (!handle) return
+    lastNonce.current = command.nonce
+    handle.run(command.text, false)
+    onCommandDelivered()
+  }, [command, activeKey, sessions, onCommandDelivered])
 
   const handleOutput = useCallback(() => {
     if (settleTimer.current) clearTimeout(settleTimer.current)
@@ -132,7 +147,15 @@ export function TerminalPanel({ projectId, projectName, theme, onClose, onSettle
             theme={theme}
             visible={session.key === activeKey}
             handleRef={(handle) => {
-              if (handle) handles.current.set(session.key, handle)
+              if (!handle) return
+              const isNew = !handles.current.has(session.key)
+              handles.current.set(session.key, handle)
+              // The first shell may appear after the command was requested.
+              if (isNew && command && command.nonce !== lastNonce.current && session.key === activeKey) {
+                lastNonce.current = command.nonce
+                handle.run(command.text, false)
+                onCommandDelivered()
+              }
             }}
             onOutput={handleOutput}
             onExit={() => setSessions((current) => current.map((s) => (s.key === session.key ? { ...s, ended: true } : s)))}

@@ -4,8 +4,8 @@ import "@xterm/xterm/css/xterm.css"
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react"
 
 export interface TerminalHandle {
-  /** Types a command into the shell (followed by Enter). */
-  run: (command: string) => void
+  /** Types a command into the shell; with execute it also presses Enter. */
+  run: (command: string, execute?: boolean) => void
   focus: () => void
 }
 
@@ -36,12 +36,16 @@ export function TerminalView({ projectId, theme, visible, handleRef, onOutput, o
   const term = useRef<Terminal | null>(null)
   const fit = useRef<FitAddon | null>(null)
   const socket = useRef<WebSocket | null>(null)
+  /** Commands requested before the socket opened. */
+  const queued = useRef<string[]>([])
   const callbacks = useRef({ onOutput, onExit })
   callbacks.current = { onOutput, onExit }
 
   useImperativeHandle(handleRef, () => ({
-    run: (command) => {
-      if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ t: "i", d: `${command}\r` }))
+    run: (command, execute = true) => {
+      const message = JSON.stringify({ t: "i", d: execute ? `${command}\r` : command })
+      if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(message)
+      else queued.current.push(message)
       term.current?.focus()
     },
     focus: () => term.current?.focus(),
@@ -60,6 +64,10 @@ export function TerminalView({ projectId, theme, visible, handleRef, onOutput, o
 
     const ws = new WebSocket(socketUrl(projectId, terminal.cols, terminal.rows))
     socket.current = ws
+    ws.onopen = () => {
+      // Give the login shell a moment to print its prompt before queued commands.
+      setTimeout(() => queued.current.splice(0).forEach((message) => ws.send(message)), 800)
+    }
     ws.onmessage = (event) => {
       terminal.write(typeof event.data === "string" ? event.data : "")
       callbacks.current.onOutput()

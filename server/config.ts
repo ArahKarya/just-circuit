@@ -41,6 +41,8 @@ export const config = Object.freeze({
   maxBodyBytes: "8mb",
   /** Hard cap for one AI reply; long circuits with reasoning models can take minutes. */
   upstreamTimeoutMs: 600_000,
+  /** Agent runs build and search between model calls, so they get longer. */
+  agentTimeoutMs: readInt(process.env.LLM_AGENT_TIMEOUT_MS, 900_000),
   /** Abort when the provider sends nothing (text or reasoning) for this long. */
   idleTimeoutMs: readInt(process.env.LLM_IDLE_TIMEOUT_MS, 120_000),
   /** Wait for the first chunk; proxies such as 9router may not forward a model's thinking. */

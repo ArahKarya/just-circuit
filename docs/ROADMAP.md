@@ -69,6 +69,7 @@ Rencana awal:
 
 - [x] Memori AI: memori proyek (`.cds/memory.md`) dan global (`CDS_DATA_DIR/memory.md`), selalu dikirim ke AI; AI mencatat sendiri lewat blok `memory`; bisa diedit di Pengaturan → Memori.
 - [x] Library komponen (`CDS_DATA_DIR/library/`): simpan file/folder ke library (ikon buku di penjelajah file), sisipkan ke proyek lain ke `lib/<nama>/` + import otomatis, AI tahu katalog library; prompt menjelaskan paket `@tsci/...` dan npm.
-- [ ] AI agen: baca file, jalankan build, baca error, cari part JLCPCB.
-- [ ] AI mengusulkan perintah terminal, dijalankan setelah disetujui.
+- [x] Mode agen: AI memakai tools (daftar/baca/cari/tulis/ubah/hapus file, build, cari part JLCPCB); satu versi git per jawaban; langkah tampil di chat.
+- [x] Hasil agen dicek preview browser dan error dikirim balik otomatis; build di server opsional dan di dalam sandbox (sandbox-exec / bwrap, tanpa jaringan, home tidak terbaca, salinan sementara).
+- [x] AI mengusulkan perintah terminal; hanya ditempel ke terminal setelah diklik, Enter ditekan pengguna sendiri.
 - [ ] Panel DRC/ERC yang bisa diklik ke komponen.

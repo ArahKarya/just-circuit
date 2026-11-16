@@ -30,6 +30,11 @@ export interface AiSettings {
   autoFixConnectionId?: string | null
   /** Earlier chat messages sent with each request. */
   historyLimit?: number
+  /** Agent mode: the AI reads/writes files, builds and searches parts with tools. */
+  agentMode?: boolean
+  agentMaxSteps?: number
+  /** Let the agent run tsci build on the server (sandboxed); off: the browser preview checks. */
+  agentServerBuild?: boolean
   connections: Connection[]
   temperature: number
   maxOutputTokens: number
@@ -113,6 +118,17 @@ export interface ChatMessage {
   /** Project files before this message was applied, so it can be undone. */
   previousFiles?: ProjectFiles
   isError?: boolean
+  /** Agent mode: the tools the AI used for this answer. */
+  toolSteps?: ToolStep[]
+}
+
+export interface ToolStep {
+  name: string
+  /** What it was asked (a path, a query, a command). */
+  detail: string
+  /** undefined while running. */
+  ok?: boolean
+  result?: string
 }
 
 export interface RunStatus {

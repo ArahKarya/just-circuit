@@ -1,0 +1,60 @@
+import { CheckCircle2, CircleAlert, Loader2, Play, TerminalSquare } from "lucide-react"
+import type { ToolStep } from "../lib/types"
+
+const LABELS: Record<string, string> = {
+  list_files: "Lihat daftar file",
+  read_file: "Baca",
+  search_files: "Cari di file",
+  write_file: "Tulis",
+  edit_file: "Ubah",
+  delete_file: "Hapus",
+  build_circuit: "Build",
+  search_jlcpcb: "Cari part JLCPCB",
+  propose_command: "Usul perintah",
+}
+
+interface ToolStepsProps {
+  steps: readonly ToolStep[]
+  onRunCommand?: (command: string) => void
+}
+
+function StepIcon({ step }: { step: ToolStep }) {
+  if (step.ok === undefined) return <Loader2 size={12} className="mt-0.5 shrink-0 animate-spin text-muted" />
+  return step.ok ? <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-accent" /> : <CircleAlert size={12} className="mt-0.5 shrink-0 text-danger" />
+}
+
+/** The tools the agent used, one line each; proposed shell commands get a run button. */
+export function ToolSteps({ steps, onRunCommand }: ToolStepsProps) {
+  const proposals = steps.filter((step) => step.name === "propose_command" && step.detail)
+  return (
+    <div className="space-y-2">
+      <ol className="space-y-1 rounded-md border border-line bg-surface/60 p-2 text-xs" aria-label="Langkah agen">
+        {steps.map((step, index) => (
+          <li key={index} className="flex gap-1.5">
+            <StepIcon step={step} />
+            <span className="min-w-0">
+              <span className="text-ink">{LABELS[step.name] ?? step.name}</span>
+              {step.detail && <span className="font-mono text-muted"> {step.detail}</span>}
+              {step.result && <span className={step.ok === false ? "text-danger" : "text-muted"}> → {step.result}</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
+      {onRunCommand &&
+        proposals.map((step, index) => (
+          <div key={index} className="flex flex-wrap items-center gap-2 rounded-md border border-line p-2 text-xs">
+            <TerminalSquare size={13} className="text-muted" />
+            <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-ink">{step.detail}</code>
+            <button
+              type="button"
+              title="Ditempel ke terminal; periksa lalu tekan Enter sendiri"
+              onClick={() => onRunCommand(step.detail)}
+              className="inline-flex items-center gap-1 rounded border border-line px-2 py-1 hover:bg-raised"
+            >
+              <Play size={11} /> Tempel ke terminal
+            </button>
+          </div>
+        ))}
+    </div>
+  )
+}

@@ -85,7 +85,7 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   })
   app.use("/api/jlc", rateLimit(config.jlcRateLimitPerMinute), jlcRouter())
   app.use("/api", auth.requireCsrfHeader)
-  app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter(settings))
+  app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter(settings, projects))
   app.use("/api/projects", express.json({ limit: PROJECT_BODY_LIMIT }), projectsRouter(projects))
   app.use("/api/workspaces", express.json({ limit: "16kb" }), workspacesRouter(workspaces))
   app.use("/api/trash", trashRouter(projects))

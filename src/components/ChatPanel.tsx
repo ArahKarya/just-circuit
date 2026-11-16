@@ -1,9 +1,10 @@
-import { Bot, CircleStop, Eraser, RotateCcw, SendHorizontal, Settings2, TriangleAlert, User } from "lucide-react"
+import { Bot, CircleStop, Eraser, RotateCcw, SendHorizontal, Settings2, TriangleAlert, User, Workflow } from "lucide-react"
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react"
 import type { ChatState } from "../hooks/useChat"
 import { stripCodeBlocks } from "../lib/extract-code"
 import type { ChatMessage, Connection } from "../lib/types"
 import { PendingReply } from "./PendingReply"
+import { ToolSteps } from "./ToolSteps"
 import { Button, IconButton } from "./ui"
 
 interface ChatPanelProps {
@@ -11,6 +12,10 @@ interface ChatPanelProps {
   connection: Connection | undefined
   connectionProblem: string | null
   onOpenSettings: () => void
+  agentMode: boolean
+  onToggleAgent: () => void
+  /** Opens the terminal and runs a command the agent proposed (the user clicked it). */
+  onRunCommand: (command: string) => void
 }
 
 const EXAMPLE_PROMPTS = [
@@ -23,9 +28,10 @@ interface MessageBubbleProps {
   message: ChatMessage
   canUndo: boolean
   onUndo: (message: ChatMessage) => void
+  onRunCommand: (command: string) => void
 }
 
-function MessageBubble({ message, canUndo, onUndo }: MessageBubbleProps) {
+function MessageBubble({ message, canUndo, onUndo, onRunCommand }: MessageBubbleProps) {
   const isUser = message.role === "user"
   const text = isUser ? message.content : stripCodeBlocks(message.content).trim()
   return (
@@ -34,6 +40,17 @@ function MessageBubble({ message, canUndo, onUndo }: MessageBubbleProps) {
         {isUser ? <User size={14} /> : message.isError ? <TriangleAlert size={14} className="text-danger" /> : <Bot size={14} />}
       </div>
       <div className="min-w-0 flex-1 space-y-2">
+        {message.toolSteps && message.toolSteps.length > 0 && (
+          <details className="text-xs text-muted">
+            <summary className="cursor-pointer select-none hover:text-ink">{message.toolSteps.length} langkah agen</summary>
+            <div className="mt-1.5">
+              <ToolSteps steps={message.toolSteps} />
+            </div>
+          </details>
+        )}
+        {message.toolSteps?.some((step) => step.name === "propose_command") && (
+          <ToolSteps steps={message.toolSteps.filter((step) => step.name === "propose_command")} onRunCommand={onRunCommand} />
+        )}
         <p className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${message.isError ? "text-danger" : ""}`}>{text}</p>
         {message.appliedFiles && message.appliedFiles.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -50,7 +67,7 @@ function MessageBubble({ message, canUndo, onUndo }: MessageBubbleProps) {
   )
 }
 
-export function ChatPanel({ chat, connection, connectionProblem, onOpenSettings }: ChatPanelProps) {
+export function ChatPanel({ chat, connection, connectionProblem, onOpenSettings, agentMode, onToggleAgent, onRunCommand }: ChatPanelProps) {
   const [draft, setDraft] = useState("")
   const listRef = useRef<HTMLDivElement>(null)
   const lastAppliedId = [...chat.messages].reverse().find((m) => m.previousFiles)?.id
@@ -77,6 +94,15 @@ export function ChatPanel({ chat, connection, connectionProblem, onOpenSettings 
         <button type="button" onClick={onOpenSettings} className="flex min-w-0 items-center gap-1.5 truncate rounded px-1.5 py-1 hover:bg-raised hover:text-ink">
           <Settings2 size={13} />
           <span className="truncate">{connection ? `${connection.name} · ${connection.model || "model belum diisi"}` : "Atur koneksi AI"}</span>
+        </button>
+        <button
+          type="button"
+          aria-pressed={agentMode}
+          title="Mode agen: AI membaca/menulis file, menjalankan build, dan mencari part sendiri"
+          onClick={onToggleAgent}
+          className={`ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-1 ${agentMode ? "bg-accent/15 text-accent" : "hover:bg-raised hover:text-ink"}`}
+        >
+          <Workflow size={13} /> Mode agen
         </button>
         <IconButton label="Hapus riwayat chat" onClick={() => void chat.clear()} disabled={chat.isBusy || chat.messages.length === 0}>
           <Eraser size={15} />
@@ -106,9 +132,9 @@ export function ChatPanel({ chat, connection, connectionProblem, onOpenSettings 
         ) : (
           <ul className="space-y-5">
             {chat.messages.map((message) => (
-              <MessageBubble key={message.id} message={message} canUndo={message.id === lastAppliedId && !chat.isBusy} onUndo={(m) => void chat.undo(m)} />
+              <MessageBubble key={message.id} message={message} canUndo={message.id === lastAppliedId && !chat.isBusy} onUndo={(m) => void chat.undo(m)} onRunCommand={onRunCommand} />
             ))}
-            {chat.isBusy && <PendingReply streamingText={chat.streamingText} reasoningText={chat.reasoningText} busySince={chat.busySince} />}
+            {chat.isBusy && <PendingReply streamingText={chat.streamingText} reasoningText={chat.reasoningText} busySince={chat.busySince} toolSteps={chat.toolSteps} />}
           </ul>
         )}
       </div>

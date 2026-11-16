@@ -68,6 +68,9 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const [circuitJson, setCircuitJson] = useState<unknown[] | null>(null)
   const [isLayoutMode, setIsLayoutMode] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
+  /** A command the agent proposed and the user chose to run. */
+  const [terminalCommand, setTerminalCommand] = useState<{ text: string; nonce: number } | null>(null)
+  const clearTerminalCommand = useCallback(() => setTerminalCommand(null), [])
   /** File or folder being saved to the library. */
   const [libraryPath, setLibraryPath] = useState<string | null>(null)
 
@@ -86,7 +89,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const layoutCircuit = useRef<unknown[]>([])
   const project = working.project
 
-  const chat = useChat({ project, runStatus, onApplyProject: working.apply })
+  const chat = useChat({ project, runStatus, onApplyProject: working.apply, flush: working.flush })
   const fileActions = useFileActions(project, working, activeFile ?? undefined, setActiveFile)
   const connection = chatConnection(ai.settings, project?.settings)
   const problem = connectionProblem(connection)
@@ -205,7 +208,18 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           </div>
           <div className="min-h-0 flex-1">
             {leftTab === "chat" ? (
-              <ChatPanel chat={chat} connection={connection} connectionProblem={problem} onOpenSettings={() => setDialog("settings")} />
+              <ChatPanel
+                chat={chat}
+                connection={connection}
+                connectionProblem={problem}
+                onOpenSettings={() => setDialog("settings")}
+                agentMode={ai.settings.agentMode ?? false}
+                onToggleAgent={() => void ai.save({ ...ai.settings, agentMode: !ai.settings.agentMode }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Gagal menyimpan"))}
+                onRunCommand={(text) => {
+                  setShowTerminal(true)
+                  setTerminalCommand({ text, nonce: Date.now() })
+                }}
+              />
             ) : (
               <CodeEditor
                 project={project}
@@ -239,6 +253,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           projectId={project.id}
           projectName={project.name}
           theme={theme}
+          command={terminalCommand}
+          onCommandDelivered={clearTerminalCommand}
           onClose={() => setShowTerminal(false)}
           onSettled={() => notifyChange(TOPICS.project(project.id), TOPICS.versions(project.id), TOPICS.projects)}
         />

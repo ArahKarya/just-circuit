@@ -9,8 +9,9 @@ export const SCAFFOLD_FILES = new Set(["package.json", "tscircuit.config.json", 
 export const SKIPPED_DIRS = new Set(["node_modules", "dist"])
 /** Never written through the API: tools execute what is inside, or read it as configuration. */
 const FORBIDDEN_SEGMENTS = new Set([...SKIPPED_DIRS, "package.json", "bunfig.toml"])
-const CONFIG_NAME = /^(tscircuit|vite|vitest|bunfig|tsconfig)\.config\.|^tsconfig\./i
-const SEGMENT = /^[\w-][\w.-]*$/
+const CONFIG_NAME = /^(tscircuit|vite|vitest|bunfig|tsconfig|jsconfig)\.config\.|^(tsconfig|jsconfig|bunfig)\./i
+/** Starts with a letter, digit or underscore: never "-x" (it would read as a CLI option). */
+const SEGMENT = /^\w[\w.-]*$/
 export const MAX_FILE_BYTES = 1024 * 1024
 export const MAX_FILES = 500
 

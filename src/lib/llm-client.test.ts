@@ -24,7 +24,7 @@ describe("streamChat", () => {
   it("joins text split across chunk boundaries", async () => {
     mockStream(['{"type":"text","text":"Hal', 'o"}\n{"type":"text","text":" dunia"}\n', '{"type":"done","finishReason":"stop"}\n'])
     const onText = vi.fn()
-    await expect(streamChat(request(onText))).resolves.toEqual({ text: "Halo dunia", truncated: false })
+    await expect(streamChat(request(onText))).resolves.toEqual({ text: "Halo dunia", truncated: false, changedFiles: [] })
     expect(onText).toHaveBeenCalledTimes(2)
   })
 
@@ -38,7 +38,7 @@ describe("streamChat", () => {
 
   it("flags replies cut off by the token limit", async () => {
     mockStream(['{"type":"text","text":"a"}\n{"type":"done","finishReason":"length"}'])
-    await expect(streamChat(request())).resolves.toEqual({ text: "a", truncated: true })
+    await expect(streamChat(request())).resolves.toEqual({ text: "a", truncated: true, changedFiles: [] })
   })
 
   it("rejects a stream that ends without a done event", async () => {

@@ -51,6 +51,21 @@ function pickReply(last, body) {
   return last.includes("gagal di-build") || last.includes("THINK") ? FIXED : BROKEN
 }
 
+// "AGENT": a scripted tool-using run, one tool per request, decided by how many tool results came back.
+const AGENT_SCRIPT = [
+  { name: "read_file", args: { path: "index.circuit.tsx" } },
+  { name: "edit_file", args: { path: "index.circuit.tsx", search: 'resistance="330"', replace: 'resistance="1k"' } },
+  { name: "build_circuit", args: {} },
+  { name: "propose_command", args: { command: "echo PERINTAH-$((40+2))", reason: "contoh" } },
+]
+
+function writeToolCall(res, step, index) {
+  const call = { index: 0, id: `call_${index}`, type: "function", function: { name: step.name, arguments: JSON.stringify(step.args) } }
+  res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: { role: "assistant", tool_calls: [call] }, finish_reason: null }] })}\n\n`)
+  res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\n`)
+  res.end("data: [DONE]\n\n")
+}
+
 function readBody(req) {
   return new Promise((resolve) => {
     let data = ""
@@ -89,6 +104,20 @@ createServer(async (req, res) => {
         res.write(chunk(`Langkah ${i + 1}: menghitung nilai resistor. `, "reasoning_content"))
         await sleep(500)
       }
+    }
+    const firstUser = body.messages?.filter((m) => m.role === "user").at(-1)?.content ?? ""
+    if (body.tools && firstUser.includes("AGENT")) {
+      const done = body.messages.filter((m) => m.role === "tool").length
+      if (done < AGENT_SCRIPT.length) {
+        writeToolCall(res, AGENT_SCRIPT[done], done)
+        return
+      }
+      const build = body.messages.filter((m) => m.role === "tool").map((m) => String(m.content)).find((c) => c.includes('"ok"') && c.includes("warnings")) ?? ""
+      const summary = `Selesai: R1 diganti 1k. Build ${build.includes('"ok":true') ? "OK" : build.includes("dimatikan") ? "dicek preview" : "gagal"}.`
+      for (let i = 0; i < summary.length; i += 40) res.write(chunk(summary.slice(i, i + 40)))
+      res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`)
+      res.end("data: [DONE]\n\n")
+      return
     }
     const reply = pickReply(last, body)
     for (let i = 0; i < reply.length; i += 40) res.write(chunk(reply.slice(i, i + 40)))

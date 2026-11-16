@@ -17,18 +17,27 @@ export interface ChatRequest {
   onText: (delta: string) => void
   /** The model's thinking, streamed before (or between) answer text. */
   onReasoning?: (delta: string) => void
+  /** Agent mode: let the model use tools on this project. */
+  agent?: { projectId: string; maxSteps: number; versionMessage: string }
+  onTool?: (event: { id: string; name: string; detail: string }) => void
+  onToolResult?: (event: { id: string; name: string; ok: boolean; detail: string }) => void
 }
 
 type StreamEvent =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string }
   | { type: "error"; message: string }
+  | { type: "tool"; id: string; name: string; detail: string }
+  | { type: "tool-result"; id: string; name: string; ok: boolean; detail: string }
+  | { type: "files-changed"; paths: string[] }
   | { type: "done"; finishReason?: string }
 
 export interface ChatResult {
   text: string
   /** True when the model stopped because it hit the output token limit. */
   truncated: boolean
+  /** Agent mode: files the agent changed on the server. */
+  changedFiles: string[]
 }
 
 const JSON_HEADERS = { "Content-Type": "application/json", "X-CDS-Request": "1" }
@@ -69,6 +78,7 @@ export async function streamChat(request: ChatRequest): Promise<ChatResult> {
       messages: request.messages,
       temperature: request.temperature,
       maxOutputTokens: request.maxOutputTokens,
+      agent: request.agent,
     }),
   })
   if (!response.ok || !response.body) throw new Error(await readErrorMessage(response))
@@ -76,13 +86,19 @@ export async function streamChat(request: ChatRequest): Promise<ChatResult> {
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ""
   let reply = ""
-  const state: { finishReason: string | undefined; done: boolean } = { finishReason: undefined, done: false }
+  const state: { finishReason: string | undefined; done: boolean; changedFiles: string[] } = { finishReason: undefined, done: false, changedFiles: [] }
   const handle = (event: StreamEvent | null) => {
     if (event?.type === "text") {
       reply += event.text
       request.onText(event.text)
     } else if (event?.type === "reasoning") {
       request.onReasoning?.(event.text)
+    } else if (event?.type === "tool") {
+      request.onTool?.(event)
+    } else if (event?.type === "tool-result") {
+      request.onToolResult?.(event)
+    } else if (event?.type === "files-changed") {
+      state.changedFiles = event.paths
     } else if (event?.type === "error") {
       throw new Error(event.message)
     } else if (event?.type === "done") {
@@ -102,10 +118,12 @@ export async function streamChat(request: ChatRequest): Promise<ChatResult> {
     handle(parseLine(buffer))
   } catch (error) {
     await reader.cancel().catch(() => undefined)
+    // Files the agent already saved must still reach the editor.
+    if (state.changedFiles.length > 0 && error instanceof Error) throw Object.assign(error, { changedFiles: state.changedFiles })
     throw error
   }
   if (!state.done) throw new Error("Koneksi ke AI terputus sebelum jawaban selesai. Perubahan tidak diterapkan.")
-  return { text: reply, truncated: state.finishReason === "length" }
+  return { text: reply, truncated: state.finishReason === "length", changedFiles: state.changedFiles }
 }
 
 export interface ConnectionTestResult {

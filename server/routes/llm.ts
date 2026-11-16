@@ -1,5 +1,9 @@
 import { Router, type Request, type Response } from "express"
-import { generateText, streamText } from "ai"
+import path from "node:path"
+import { generateText, stepCountIs, streamText, type ToolSet } from "ai"
+import { createAgentTools, type AgentContext } from "../agent/tools.js"
+import { describeToolCall, describeToolResult } from "../agent/summary.js"
+import type { ProjectStore } from "../storage/projects.js"
 import { config } from "../config.js"
 import { errorMessage, logger } from "../logger.js"
 import { describeProviderError } from "../llm/errors.js"
@@ -28,6 +32,11 @@ export type ChatStreamEvent =
   /** The model's thinking, shown so long reasoning doesn't look like a hang. */
   | { type: "reasoning"; text: string }
   | { type: "error"; message: string }
+  /** Agent mode: a tool call and its outcome, shown as steps in the chat. */
+  | { type: "tool"; id: string; name: string; detail: string }
+  | { type: "tool-result"; id: string; name: string; ok: boolean; detail: string }
+  /** Agent mode: the agent changed these files (already saved and recorded as a version). */
+  | { type: "files-changed"; paths: string[] }
   | { type: "done"; finishReason?: string }
 
 function writeEvent(res: Response, event: ChatStreamEvent): void {
@@ -38,7 +47,7 @@ function sendError(res: Response, status: number, message: string): void {
   res.status(status).json({ success: false, error: message })
 }
 
-async function handleChat(settings: SettingsStore, req: Request, res: Response): Promise<void> {
+async function handleChat(settings: SettingsStore, projects: ProjectStore, req: Request, res: Response): Promise<void> {
   const parsed = chatRequestSchema.safeParse(req.body)
   if (!parsed.success) {
     sendError(res, 400, parsed.error.issues.map((issue) => issue.message).join("; "))
@@ -81,7 +90,7 @@ async function handleChat(settings: SettingsStore, req: Request, res: Response):
   const total = setTimeout(() => {
     stopReason = "total"
     upstream.abort()
-  }, config.upstreamTimeoutMs)
+  }, body.agent ? config.agentTimeoutMs : config.upstreamTimeoutMs)
   const startedAt = Date.now()
   const logContext = { kind: connection.kind, model: connection.model }
   res.on("close", () => clientGone.abort())
@@ -91,8 +100,37 @@ async function handleChat(settings: SettingsStore, req: Request, res: Response):
   res.setHeader("X-Accel-Buffering", "no")
   res.flushHeaders()
 
+  let agent: AgentContext | null = null
+  let tools: ToolSet | undefined
+  if (body.agent) {
+    try {
+      await projects.pathOf(body.agent.projectId)
+    } catch {
+      writeEvent(res, { type: "error", message: "Proyek tidak ditemukan" })
+      res.end()
+      return
+    }
+    const stored = await settings.readRaw()
+    agent = {
+      projectId: body.agent.projectId,
+      store: projects,
+      keepAlive: () => idle.touch(),
+      changed: new Set(),
+      signal: AbortSignal.any([clientGone.signal, upstream.signal]),
+      serverBuild: {
+        enabled: stored.agentServerBuild === true,
+        runtimeDir: path.join(config.dataDir, "build-runtime"),
+        secretDirs: [config.dataDir],
+      },
+    }
+    tools = createAgentTools(agent)
+    // Hand edits since the last version stay separate from what the agent does.
+    await projects.saveVersion(body.agent.projectId, "Perubahan manual").catch(() => null)
+  }
+
   try {
     const result = streamText({
+      ...(tools && body.agent ? { tools, stopWhen: stepCountIs(body.agent.maxSteps) } : {}),
       model,
       system: body.system,
       messages: body.messages,
@@ -111,6 +149,16 @@ async function handleChat(settings: SettingsStore, req: Request, res: Response):
       if (part.type === "text-delta" || part.type === "reasoning-delta") idle.touch()
       if (part.type === "text-delta") writeEvent(res, { type: "text", text: part.text })
       else if (part.type === "reasoning-delta") writeEvent(res, { type: "reasoning", text: part.text })
+      else if (part.type === "tool-call") {
+        idle.touch()
+        writeEvent(res, { type: "tool", id: part.toolCallId, name: part.toolName, detail: describeToolCall(part.toolName, part.input) })
+      } else if (part.type === "tool-result") {
+        idle.touch()
+        writeEvent(res, { type: "tool-result", id: part.toolCallId, name: part.toolName, ok: true, detail: describeToolResult(part.toolName, part.output) })
+      } else if (part.type === "tool-error") {
+        idle.touch()
+        writeEvent(res, { type: "tool-result", id: part.toolCallId, name: part.toolName, ok: false, detail: errorMessage(part.error).slice(0, 200) })
+      }
       else if (part.type === "error") {
         failed = true
         logger.warn("llm chat failed", { ...logContext, seconds: Math.round((Date.now() - startedAt) / 1000), error: describeProviderError(part.error) })
@@ -119,9 +167,18 @@ async function handleChat(settings: SettingsStore, req: Request, res: Response):
     }
     if (stopReason) throw new Error("stopped")
     if (failed) return
-    logger.info("llm chat done", { ...logContext, finishReason, seconds: Math.round((Date.now() - startedAt) / 1000) })
+    if (agent && agent.changed.size > 0 && body.agent) {
+      await projects.saveVersion(body.agent.projectId, body.agent.versionMessage).catch(() => null)
+      writeEvent(res, { type: "files-changed", paths: [...agent.changed].sort() })
+    }
+    logger.info("llm chat done", { ...logContext, agent: Boolean(agent), finishReason, seconds: Math.round((Date.now() - startedAt) / 1000) })
     writeEvent(res, { type: "done", finishReason })
   } catch (error) {
+    // Files the agent already wrote stay on disk: tell the browser to reload them.
+    if (agent && agent.changed.size > 0 && body.agent) {
+      await projects.saveVersion(body.agent.projectId, `${body.agent.versionMessage} (terhenti)`).catch(() => null)
+      if (!clientGone.signal.aborted) writeEvent(res, { type: "files-changed", paths: [...agent.changed].sort() })
+    }
     if (!clientGone.signal.aborted) {
       const message = timeoutMessage(stopReason, timeouts) ?? describeProviderError(error)
       logger.warn("llm chat failed", { ...logContext, seconds: Math.round((Date.now() - startedAt) / 1000), error: message })
@@ -194,9 +251,9 @@ async function handleTest(settings: SettingsStore, req: Request, res: Response):
   }
 }
 
-export function llmRouter(settings: SettingsStore): Router {
+export function llmRouter(settings: SettingsStore, projects: ProjectStore): Router {
   const router = Router()
-  router.post("/chat", (req, res, next) => handleChat(settings, req, res).catch(next))
+  router.post("/chat", (req, res, next) => handleChat(settings, projects, req, res).catch(next))
   router.post("/models", (req, res, next) => handleModels(settings, req, res).catch(next))
   router.post("/test", (req, res, next) => handleTest(settings, req, res).catch(next))
   return router

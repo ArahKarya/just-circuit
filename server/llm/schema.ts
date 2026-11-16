@@ -25,6 +25,15 @@ export const chatRequestSchema = z.object({
     .max(100),
   temperature: z.number().min(0).max(2).optional(),
   maxOutputTokens: z.number().int().min(256).max(64_000).optional(),
+  /** Agent mode: the model may read/write project files, build and search parts with tools. */
+  agent: z
+    .object({
+      projectId: z.string().min(1).max(100),
+      maxSteps: z.number().int().min(2).max(40),
+      /** Version message for the files the agent changes. */
+      versionMessage: z.string().trim().min(1).max(200),
+    })
+    .optional(),
 })
 
 /** Listing models works for unsaved connections too; an empty apiKey falls back to the saved one. */

@@ -28,7 +28,14 @@ test("saves a file to the library and inserts it into another project", async ({
   await list.getByRole("button", { name: "Sisipkan" }).click()
   await expect(page.getByText(/Relay modul disisipkan, pakai <Relay \/>/)).toBeVisible()
   await expect(tree.getByRole("button", { name: "relay-modul", exact: true })).toBeVisible()
-  await expect(page.locator(".monaco-editor")).toContainText('import { Relay } from "./lib/relay-modul/relay"', { timeout: 20_000 })
+  // Check the saved file (the editor wraps long lines, so its DOM text is split).
+  await expect(async () => {
+    const projects = (await (await page.request.get("/api/projects")).json()).data as { id: string; name: string }[]
+    const second = projects.find((p) => p.name === "Proyek kedua")
+    const project = (await (await page.request.get(`/api/projects/${second?.id}`)).json()).data as { files: Record<string, string> }
+    expect(project.files["index.circuit.tsx"]).toContain('import { Relay } from "./lib/relay-modul/relay"')
+    expect(project.files["lib/relay-modul/relay.tsx"]).toContain("export const Relay")
+  }).toPass({ timeout: 20_000 })
 
   // The AI sees the library catalog.
   await page.getByRole("button", { name: "Pengaturan", exact: true }).click()

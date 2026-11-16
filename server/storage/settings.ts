@@ -31,6 +31,11 @@ const settingsBase = z.object({
   autoFixAttempts: z.number().int().min(0).max(10),
   /** Earlier chat messages sent with each request. */
   historyLimit: z.number().int().min(2).max(100).optional(),
+  /** Agent mode: the model works with tools (read/write files, build, part search). */
+  agentMode: z.boolean().optional(),
+  agentMaxSteps: z.number().int().min(2).max(40).optional(),
+  /** Let the agent run `tsci build` on the server (sandboxed). Off: the browser preview checks. */
+  agentServerBuild: z.boolean().optional(),
 })
 
 /** What the browser sends: apiKey null keeps the stored key, "" removes it. */
@@ -104,7 +109,13 @@ export function createSettingsStore(dataDir: string, box: SecretBox) {
     }
   }
 
-  return { read, write, resolve }
+  /** Settings without keys, for server-side decisions (e.g. agent options). */
+  async function readRaw(): Promise<z.infer<typeof settingsBase>> {
+    const { connections: _connections, ...rest } = await load()
+    return rest
+  }
+
+  return { read, write, resolve, readRaw }
 }
 
 export type SettingsStore = ReturnType<typeof createSettingsStore>

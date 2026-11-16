@@ -1,11 +1,14 @@
 import { Bot, Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { stripCodeBlocks } from "../lib/extract-code"
+import type { ToolStep } from "../lib/types"
+import { ToolSteps } from "./ToolSteps"
 
 interface PendingReplyProps {
   streamingText: string
   reasoningText: string
   busySince: number | null
+  toolSteps?: readonly ToolStep[]
 }
 
 const SLOW_HINT_AFTER_S = 90
@@ -29,11 +32,12 @@ function useElapsedSeconds(since: number | null): number {
   return since === null ? 0 : Math.max(0, Math.round((now - since) / 1000))
 }
 
-export function PendingReply({ streamingText, reasoningText, busySince }: PendingReplyProps) {
+export function PendingReply({ streamingText, reasoningText, busySince, toolSteps = [] }: PendingReplyProps) {
   const seconds = useElapsedSeconds(busySince)
   const text = displayText(streamingText)
-  const phase = streamingText ? "Menulis" : reasoningText ? "Berpikir" : "Menunggu AI"
-  const isSilent = !streamingText && !reasoningText
+  const running = toolSteps.find((step) => step.ok === undefined)
+  const phase = running ? "Bekerja" : streamingText ? "Menulis" : reasoningText ? "Berpikir" : "Menunggu AI"
+  const isSilent = !streamingText && !reasoningText && toolSteps.length === 0
 
   return (
     <li className="flex gap-2.5">
@@ -45,6 +49,7 @@ export function PendingReply({ streamingText, reasoningText, busySince }: Pendin
           <Loader2 size={12} className="animate-spin" />
           {phase}… {seconds} dtk
         </p>
+        {toolSteps.length > 0 && <ToolSteps steps={toolSteps} />}
         {reasoningText && !streamingText && (
           <p className="line-clamp-4 whitespace-pre-wrap break-words text-xs italic leading-relaxed text-muted/70">…{reasoningText.trim()}</p>
         )}

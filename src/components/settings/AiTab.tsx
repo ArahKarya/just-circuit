@@ -131,6 +131,31 @@ export function AiTab({ draft, setDraft }: AiTabProps) {
           />
         </section>
 
+        <section className="space-y-2 rounded-md border border-line p-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-emerald-500" checked={draft.agentMode ?? false} onChange={(e) => setDraft((d) => ({ ...d, agentMode: e.target.checked }))} />
+            Mode agen
+          </label>
+          <p className="text-xs text-muted">
+            AI membaca file yang dibutuhkan, mengubahnya, menjalankan <span className="font-mono">tsci build</span> dan memperbaiki error sendiri, serta mencari part JLCPCB. Lebih hemat token untuk proyek besar, tapi butuh model yang mendukung tools (Claude, GPT, Gemini) dan <span className="font-mono">tsci</span> di server.
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-emerald-500" checked={draft.agentServerBuild ?? false} onChange={(e) => setDraft((d) => ({ ...d, agentServerBuild: e.target.checked }))} />
+            Izinkan agen menjalankan build di server
+          </label>
+          <p className="text-xs text-muted">
+            Kode tulisan AI dijalankan oleh <span className="font-mono">tsci</span> di server, di dalam sandbox (macOS: sandbox-exec, Linux: bwrap) tanpa jaringan dan tanpa akses ke folder home. Kalau mati, preview di browser yang mengecek hasilnya dan error dikirim balik ke agen.
+          </p>
+          <Field
+            label="Langkah maksimal per jawaban"
+            type="number"
+            min={2}
+            max={40}
+            value={draft.agentMaxSteps ?? 12}
+            onChange={(e) => setDraft((d) => ({ ...d, agentMaxSteps: clamp(Math.round(e.target.valueAsNumber), 2, 40, 12) }))}
+          />
+        </section>
+
         <section className="grid gap-3 sm:grid-cols-2">
           <SelectField
             label="Model untuk auto-fix"
