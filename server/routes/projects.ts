@@ -15,6 +15,12 @@ const updateSchema = z.object({
   entrypoint: entrypoint.optional(),
   files: fileMap.optional(),
   commitMessage: z.string().trim().min(1).max(200).optional(),
+  settings: z
+    .object({
+      aiRules: z.string().max(4000).optional(),
+      connectionId: z.string().max(100).nullable().optional(),
+    })
+    .optional(),
 })
 const versionSchema = z.object({ message: z.string().trim().min(1, "Isi keterangan versi").max(200) })
 

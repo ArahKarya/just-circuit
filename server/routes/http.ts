@@ -1,5 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express"
-import type { ZodType } from "zod"
+import type { z, ZodTypeAny } from "zod"
 import { InvalidPathError } from "../storage/project-files.js"
 import { ConflictError, NotFoundError } from "../storage/errors.js"
 import { HistoryUnavailableError } from "../storage/history.js"
@@ -13,7 +13,7 @@ export function sendData(res: Response, data: unknown, status = 200): void {
 }
 
 /** Parses req.body with a zod schema; responds 400 on failure. */
-export function parseBody<T>(schema: ZodType<T>, req: Request, res: Response): T | null {
+export function parseBody<S extends ZodTypeAny>(schema: S, req: Request, res: Response): z.output<S> | null {
   const parsed = schema.safeParse(req.body)
   if (parsed.success) return parsed.data
   sendError(res, 400, parsed.error.issues.map((issue) => `${issue.path.join(".") || "body"}: ${issue.message}`).join("; "))

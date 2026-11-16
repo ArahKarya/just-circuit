@@ -1,4 +1,4 @@
-import type { AiSettings, Connection, ProviderKind } from "./types"
+import type { AiSettings, Connection, ProjectSettings, ProviderKind } from "./types"
 
 export interface ProviderPreset {
   id: string
@@ -112,6 +112,14 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   temperature: 0.2,
   maxOutputTokens: 8000,
   autoFixAttempts: 2,
+}
+
+export const DEFAULT_HISTORY_LIMIT = 16
+
+/** Connection for a chat request: auto-fix override, then the project's choice, then the active one. */
+export function chatConnection(settings: AiSettings, projectSettings: ProjectSettings | undefined, isAutoFix = false): Connection | undefined {
+  const byId = (id: string | null | undefined) => (id ? settings.connections.find((c) => c.id === id) : undefined)
+  return (isAutoFix ? byId(settings.autoFixConnectionId) : undefined) ?? byId(projectSettings?.connectionId) ?? activeConnection(settings)
 }
 
 export function activeConnection(settings: AiSettings): Connection | undefined {

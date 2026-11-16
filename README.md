@@ -6,7 +6,7 @@ Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langs
 
 - **Editor + preview live**: editor Monaco, preview PCB / Schematic / 3D / BOM dari `@tscircuit/runframe`. Kode dijalankan di browser (web worker), bukan di server.
 - **Chat AI**: minta rangkaian dengan bahasa biasa. AI menulis file baru secara lengkap dan mengubah file yang ada lewat edit sebagian (blok SEARCH/REPLACE), jadi desain besar tidak terpotong batas token. Kodenya langsung diterapkan dan dipreview; edit yang tidak cocok dikembalikan ke AI. Kalau build gagal, error dikirim balik ke AI untuk diperbaiki otomatis (default 2x, bisa diatur). Setiap perubahan dari AI bisa dibatalkan.
-- **Pengaturan API LLM di web**: beberapa koneksi sekaligus, pilih yang aktif, tombol "Ambil model" untuk daftar model dari provider.
+- **Pengaturan lengkap** (ikon gerigi): beberapa koneksi AI, "Ambil model", "Tes koneksi", level thinking dan batas waktu per koneksi, model terpisah untuk auto-fix; per proyek: koneksi sendiri dan aturan tambahan untuk AI; tema gelap/terang/sistem, editor, preview; cadangan pengaturan (tanpa API key).
   - OpenAI-compatible: OpenRouter, Groq, Ollama lokal, 9router, OpenAI, atau endpoint `/v1/chat/completions` lainnya
   - Anthropic (Claude) native
   - Google Gemini native

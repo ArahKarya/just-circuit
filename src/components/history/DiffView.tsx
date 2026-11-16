@@ -6,9 +6,9 @@ interface DiffViewProps {
 function lineClass(line: string): string {
   if (line.startsWith("+++") || line.startsWith("---")) return "text-muted"
   if (line.startsWith("diff --git")) return "mt-3 border-t border-line pt-2 font-semibold text-ink first:mt-0 first:border-0 first:pt-0"
-  if (line.startsWith("@@")) return "text-sky-400"
-  if (line.startsWith("+")) return "bg-emerald-500/10 text-emerald-300"
-  if (line.startsWith("-")) return "bg-red-500/10 text-red-300"
+  if (line.startsWith("@@")) return "text-info"
+  if (line.startsWith("+")) return "bg-added/10 text-added"
+  if (line.startsWith("-")) return "bg-removed/10 text-removed"
   return "text-muted"
 }
 
@@ -23,7 +23,7 @@ export function DiffView({ diff, truncated }: DiffViewProps) {
           {line.startsWith("diff --git") ? line.replace(/^diff --git a\/(.+?) b\/.+$/, "$1") : line || " "}
         </div>
       ))}
-      {truncated && <p className="mt-2 text-amber-300">Diff terlalu panjang, sisanya dipotong.</p>}
+      {truncated && <p className="mt-2 text-warn">Diff terlalu panjang, sisanya dipotong.</p>}
     </div>
   )
 }

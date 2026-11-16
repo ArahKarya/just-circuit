@@ -1,9 +1,9 @@
-import { Eye, EyeOff, ListRestart, Loader2 } from "lucide-react"
+import { Eye, EyeOff, ListRestart, Loader2, PlugZap } from "lucide-react"
 import { useState } from "react"
-import { fetchModels } from "../lib/llm-client"
+import { fetchModels, testConnection } from "../lib/llm-client"
 import { KIND_LABELS, supportsTemperature } from "../lib/providers"
-import type { Connection, ProviderKind, TemperatureMode } from "../lib/types"
-import { Button, Field, SELECT_CLASS } from "./ui"
+import type { Connection, ProviderKind, ReasoningLevel, TemperatureMode } from "../lib/types"
+import { Button, Field, SELECT_CLASS, SelectField } from "./ui"
 
 interface ConnectionEditorProps {
   connection: Connection
@@ -15,6 +15,22 @@ const BASE_URL_HINT: Record<ProviderKind, string> = {
   anthropic: "Kosongkan untuk https://api.anthropic.com/v1. Untuk proxy (mis. 9router) isi http://host:port/v1.",
   gemini: "Kosongkan untuk https://generativelanguage.googleapis.com/v1beta",
 }
+
+const REASONING_OPTIONS: { value: ReasoningLevel; label: string }[] = [
+  { value: "provider-default", label: "Bawaan provider" },
+  { value: "none", label: "Mati" },
+  { value: "low", label: "Rendah" },
+  { value: "medium", label: "Sedang" },
+  { value: "high", label: "Tinggi" },
+]
+
+/** Parses a seconds field; empty means "use the server default". */
+function seconds(value: string): number | undefined {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) ? Math.min(1800, Math.max(10, parsed)) : undefined
+}
+
+type TestState = { status: "idle" } | { status: "running" } | { status: "ok"; text: string } | { status: "error"; text: string }
 
 const TEMPERATURE_LABELS: Record<TemperatureMode, string> = {
   auto: "Otomatis",
@@ -39,7 +55,18 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
   const [showKey, setShowKey] = useState(false)
   const [models, setModels] = useState<string[]>([])
   const [modelsState, setModelsState] = useState<{ loading: boolean; error: string | null }>({ loading: false, error: null })
+  const [test, setTest] = useState<TestState>({ status: "idle" })
   const update = (patch: Partial<Connection>) => onChange({ ...connection, ...patch })
+
+  const runTest = async () => {
+    setTest({ status: "running" })
+    try {
+      const result = await testConnection(connection)
+      setTest({ status: "ok", text: `Tersambung dalam ${(result.ms / 1000).toFixed(1)} dtk. Jawaban: "${result.reply || "(kosong)"}"` })
+    } catch (error) {
+      setTest({ status: "error", text: error instanceof Error ? error.message : "Gagal" })
+    }
+  }
   const listId = `models-${connection.id}`
 
   const loadModels = async () => {
@@ -109,6 +136,36 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
       </div>
       {modelsState.error && <p className="text-xs text-danger">{modelsState.error}</p>}
       {!modelsState.error && models.length > 0 && <p className="text-xs text-muted">{models.length} model ditemukan, pilih dari kolom Model.</p>}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <SelectField
+          id={`reasoning-${connection.id}`}
+          label="Thinking"
+          options={REASONING_OPTIONS}
+          value={connection.reasoning ?? "provider-default"}
+          onChange={(e) => update({ reasoning: e.target.value as ReasoningLevel })}
+        />
+        <Field
+          id={`first-timeout-${connection.id}`}
+          label="Tunggu jawaban pertama (dtk)"
+          type="number"
+          min={10}
+          max={1800}
+          placeholder="300"
+          value={connection.firstChunkTimeoutSec ?? ""}
+          onChange={(e) => update({ firstChunkTimeoutSec: seconds(e.target.value) })}
+        />
+        <Field
+          id={`idle-timeout-${connection.id}`}
+          label="Batas diam di tengah (dtk)"
+          type="number"
+          min={10}
+          max={1800}
+          placeholder="120"
+          value={connection.idleTimeoutSec ?? ""}
+          onChange={(e) => update({ idleTimeoutSec: seconds(e.target.value) })}
+        />
+      </div>
+      <p className="text-xs text-muted">Thinking membuat jawaban lebih teliti tapi lebih lama. Kalau provider menolak (error 400), kembalikan ke "Bawaan provider". Kosongkan batas waktu untuk memakai bawaan server.</p>
       <div className="space-y-1">
         <label htmlFor={`temperature-${connection.id}`} className="text-xs font-medium text-muted">Temperature</label>
         <select
@@ -122,6 +179,14 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
           ))}
         </select>
         <p className="text-xs text-muted">{temperatureHint(connection)}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button onClick={() => void runTest()} disabled={test.status === "running" || !connection.model.trim()}>
+          {test.status === "running" ? <Loader2 size={15} className="animate-spin" /> : <PlugZap size={15} />}
+          Tes koneksi
+        </Button>
+        {test.status === "ok" && <span role="status" className="text-xs text-accent">{test.text}</span>}
+        {test.status === "error" && <span role="alert" className="text-xs text-danger">{test.text}</span>}
       </div>
     </div>
   )

@@ -3,11 +3,11 @@ import { expect, test } from "./fixtures"
 test("records AI changes as versions, shows their diff and restores an earlier version", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
-  await page.getByRole("button", { name: "Pengaturan AI" }).click()
+  await page.getByRole("button", { name: "Pengaturan", exact: true }).click()
   await page.getByLabel("Tambah dari preset").selectOption("custom")
   await page.getByRole("button", { name: "Tambah", exact: true }).click()
   await page.getByLabel("Base URL").fill("http://localhost:9911/v1")
-  await page.getByLabel("Model").fill("mock-1")
+  await page.getByLabel("Model", { exact: true }).fill("mock-1")
   await page.getByRole("button", { name: "Simpan" }).click()
 
   await page.getByLabel("Pesan untuk AI").fill("Buat LED biru")

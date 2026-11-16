@@ -12,9 +12,11 @@ import { jlcRouter } from "./routes/jlc.js"
 import { llmRouter } from "./routes/llm.js"
 import { migrateRouter } from "./routes/migrate.js"
 import { projectsRouter } from "./routes/projects.js"
+import { preferencesRouter } from "./routes/preferences.js"
 import { settingsRouter } from "./routes/settings.js"
 import { trashRouter, workspacesRouter } from "./routes/workspaces.js"
 import type { ProjectStore } from "./storage/projects.js"
+import type { PreferencesStore } from "./storage/preferences.js"
 import type { SettingsStore } from "./storage/settings.js"
 import type { WorkspaceStore } from "./storage/workspaces.js"
 
@@ -23,6 +25,7 @@ export interface AppDeps {
   projects: ProjectStore
   settings: SettingsStore
   workspaces: WorkspaceStore
+  preferences: PreferencesStore
 }
 
 /** Project files and chat snapshots can be large; the browser migration sends everything at once. */
@@ -43,7 +46,7 @@ function serveClient(app: express.Express): void {
   })
 }
 
-export function createApp({ auth, projects, settings, workspaces }: AppDeps): express.Express {
+export function createApp({ auth, projects, settings, workspaces, preferences }: AppDeps): express.Express {
   const app = express()
   app.disable("x-powered-by")
   app.use((_req, res, next) => {
@@ -65,7 +68,7 @@ export function createApp({ auth, projects, settings, workspaces }: AppDeps): ex
   if (config.isE2e) {
     // Test-only (index.ts refuses CDS_E2E outside a loopback dev server): wipe stored data between E2E tests.
     app.post("/api/test/reset", auth.requireCsrfHeader, (_req, res, next) => {
-      Promise.all(["workspaces", "trash", "settings.json"].map((name) => rm(path.join(config.dataDir, name), { recursive: true, force: true })))
+      Promise.all(["workspaces", "trash", "settings.json", "preferences.json"].map((name) => rm(path.join(config.dataDir, name), { recursive: true, force: true })))
         .then(() => res.json({ success: true, data: null }), next)
     })
   }
@@ -77,6 +80,7 @@ export function createApp({ auth, projects, settings, workspaces }: AppDeps): ex
   app.use("/api/projects", express.json({ limit: PROJECT_BODY_LIMIT }), projectsRouter(projects))
   app.use("/api/workspaces", express.json({ limit: "16kb" }), workspacesRouter(workspaces))
   app.use("/api/trash", trashRouter(projects))
+  app.use("/api/preferences", express.json({ limit: "16kb" }), preferencesRouter(preferences))
   app.use("/api/settings", express.json({ limit: "1mb" }), settingsRouter(settings))
   app.use("/api/migrate", express.json({ limit: MIGRATION_BODY_LIMIT }), migrateRouter(projects, settings))
   app.use("/api", (_req, res) => {

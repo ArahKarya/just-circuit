@@ -4,15 +4,15 @@ test("keeps code, chat and settings on the server across reloads; never returns 
   await page.goto("/")
   await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
 
-  await page.getByRole("button", { name: "Pengaturan AI" }).click()
+  await page.getByRole("button", { name: "Pengaturan", exact: true }).click()
   await page.getByLabel("Tambah dari preset").selectOption("custom")
   await page.getByRole("button", { name: "Tambah", exact: true }).click()
   await page.getByLabel("Base URL").fill("http://localhost:9911/v1")
   await page.getByLabel("API key").fill("sk-test-rahasia-123")
-  await page.getByLabel("Model").fill("mock-1")
+  await page.getByLabel("Model", { exact: true }).fill("mock-1")
   await page.getByRole("button", { name: "Simpan" }).click()
   // The dialog closes once the server has stored the settings.
-  await expect(page.getByRole("dialog", { name: "Pengaturan AI" })).toBeHidden()
+  await expect(page.getByRole("dialog", { name: "Pengaturan" })).toBeHidden()
 
   const settings = await (await page.request.get("/api/settings")).text()
   expect(settings).not.toContain("sk-test-rahasia-123")
@@ -27,7 +27,7 @@ test("keeps code, chat and settings on the server across reloads; never returns 
   await page.getByRole("tab", { name: "Kode" }).click()
   await expect(page.locator(".monaco-editor")).toContainText('color="blue"')
 
-  await page.getByRole("button", { name: "Pengaturan AI" }).click()
+  await page.getByRole("button", { name: "Pengaturan", exact: true }).click()
   await expect(page.getByLabel("API key")).toHaveAttribute("placeholder", /tersimpan/)
   await expect(page.getByLabel("API key")).toHaveValue("")
 })

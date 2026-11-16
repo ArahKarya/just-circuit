@@ -25,7 +25,13 @@ const editBlock = (search, replace) =>
 const BAD_EDIT = `Ganti resistor.\n${editBlock('resistance="999"', 'resistance="470"')}`
 const GOOD_EDIT = `Resistor diganti 470Ω.\n${editBlock('    <resistor name="R1" resistance="330" footprint="0603" pcbX={0} />', '    <resistor name="R1" resistance="470" footprint="0603" pcbX={0} />')}`
 
-function pickReply(last) {
+function pickReply(last, body) {
+  if (last.includes("ECHO-RULES")) {
+    const system = body.messages?.find((m) => m.role === "system")?.content ?? ""
+    const match = system.match(/ATURAN-KHUSUS[^\n]*/)
+    return match ? `Aturan diterima: ${match[0]}` : "Tidak ada aturan proyek."
+  }
+  if (last.includes("gagal di-build")) return `${FIXED}\n\n(model: ${body.model})`
   if (last.includes("Sebagian edit tidak bisa")) return GOOD_EDIT
   if (last.includes("EDIT")) return BAD_EDIT
   return last.includes("gagal di-build") || last.includes("THINK") ? FIXED : BROKEN
@@ -54,6 +60,12 @@ createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/v1/chat/completions") {
     const body = await readBody(req)
     const last = body.messages?.at(-1)?.content ?? ""
+    // Non-streaming requests (the "Tes koneksi" button) get a plain JSON completion.
+    if (!body.stream) {
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ id: "x", object: "chat.completion", created: 0, model: body.model, choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }))
+      return
+    }
     res.writeHead(200, { "Content-Type": "text/event-stream" })
     // "HANG": send nothing after the headers, to exercise the idle timeout.
     if (last.includes("HANG")) return
@@ -64,7 +76,7 @@ createServer(async (req, res) => {
         await sleep(500)
       }
     }
-    const reply = pickReply(last)
+    const reply = pickReply(last, body)
     for (let i = 0; i < reply.length; i += 40) res.write(chunk(reply.slice(i, i + 40)))
     res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`)
     res.end("data: [DONE]\n\n")

@@ -1,6 +1,6 @@
 import { api } from "./api"
 import { notifyChange } from "./live-data"
-import type { AiSettings, ChatMessage, Connection, Project, ProjectFiles, ProjectSummary, TrashEntry, Version, Workspace } from "./types"
+import type { AiSettings, ChatMessage, Connection, Preferences, Project, ProjectFiles, ProjectSettings, ProjectSummary, TrashEntry, Version, Workspace } from "./types"
 
 export const TOPICS = {
   projects: "projects",
@@ -9,6 +9,7 @@ export const TOPICS = {
   versions: (id: string) => `versions:${id}`,
   settings: "settings",
   workspaces: "workspaces",
+  preferences: "preferences",
   trash: "trash",
 } as const
 
@@ -47,9 +48,22 @@ export const projectsRepo = {
     await api.delete<null>(projectUrl(id))
     notifyChange(TOPICS.projects, TOPICS.workspaces, TOPICS.trash)
   },
+  async updateSettings(id: string, settings: ProjectSettings): Promise<void> {
+    await api.put<Project>(projectUrl(id), { settings })
+    notifyChange(TOPICS.project(id))
+  },
   async move(id: string, workspaceId: string): Promise<void> {
     await api.post<ProjectSummary>(`${projectUrl(id)}/move`, { workspaceId })
     notifyChange(TOPICS.projects, TOPICS.workspaces, TOPICS.project(id))
+  },
+}
+
+export const preferencesRepo = {
+  read: () => api.get<Preferences>("/api/preferences"),
+  async write(preferences: Preferences): Promise<Preferences> {
+    const saved = await api.put<Preferences>("/api/preferences", preferences)
+    notifyChange(TOPICS.preferences)
+    return saved
   },
 }
 

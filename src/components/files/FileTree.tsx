@@ -18,9 +18,9 @@ interface FileTreeProps extends FileActions {
 type Edit = { path: string; mode: "rename" | "delete"; value: string } | null
 
 function fileIcon(name: string): ReactNode {
-  if (name.endsWith(".json")) return <FileJson size={13} className="shrink-0 text-amber-300" />
+  if (name.endsWith(".json")) return <FileJson size={13} className="shrink-0 text-warn" />
   if (name.endsWith(".md") || name.endsWith(".txt") || name.endsWith(".csv")) return <FileText size={13} className="shrink-0 text-muted" />
-  return <FileCode2 size={13} className="shrink-0 text-sky-400" />
+  return <FileCode2 size={13} className="shrink-0 text-info" />
 }
 
 const ROW = "group flex h-7 items-center gap-1 rounded pr-1 text-xs"

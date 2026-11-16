@@ -4,6 +4,10 @@ import type { SecretBox } from "../security/secret-box.js"
 import { readJsonFile, writeJsonFile } from "./fs-utils.js"
 import { providerKinds } from "../llm/schema.js"
 
+export const reasoningLevels = ["provider-default", "none", "low", "medium", "high"] as const
+export type ReasoningLevel = (typeof reasoningLevels)[number]
+const timeoutSeconds = z.number().int().min(10).max(1800)
+
 const connectionBase = z.object({
   id: z.string().min(1).max(100),
   name: z.string().max(100),
@@ -11,13 +15,22 @@ const connectionBase = z.object({
   baseUrl: z.string().trim().max(500),
   model: z.string().trim().max(200),
   temperatureMode: z.enum(["auto", "send", "omit"]).optional(),
+  /** How much the model thinks before answering; provider-default sends nothing. */
+  reasoning: z.enum(reasoningLevels).optional(),
+  /** Overrides LLM_FIRST_CHUNK_TIMEOUT_MS / LLM_IDLE_TIMEOUT_MS for this connection. */
+  firstChunkTimeoutSec: timeoutSeconds.optional(),
+  idleTimeoutSec: timeoutSeconds.optional(),
 })
 
 const settingsBase = z.object({
   activeConnectionId: z.string().max(100).nullable(),
+  /** Connection for automatic build fixes (null: same as chat), e.g. a cheaper, faster model. */
+  autoFixConnectionId: z.string().max(100).nullable().optional(),
   temperature: z.number().min(0).max(2),
   maxOutputTokens: z.number().int().min(256).max(64_000),
   autoFixAttempts: z.number().int().min(0).max(10),
+  /** Earlier chat messages sent with each request. */
+  historyLimit: z.number().int().min(2).max(100).optional(),
 })
 
 /** What the browser sends: apiKey null keeps the stored key, "" removes it. */
@@ -39,6 +52,9 @@ export interface ResolvedConnection {
   baseUrl: string
   apiKey: string
   model: string
+  reasoning?: ReasoningLevel
+  firstChunkTimeoutSec?: number
+  idleTimeoutSec?: number
 }
 
 const DEFAULTS: StoredSettings = { activeConnectionId: null, connections: [], temperature: 0.2, maxOutputTokens: 8000, autoFixAttempts: 2 }
@@ -82,6 +98,9 @@ export function createSettingsStore(dataDir: string, box: SecretBox) {
       baseUrl: connection.baseUrl,
       model: connection.model,
       apiKey: connection.apiKeySealed ? box.open(connection.apiKeySealed) : "",
+      reasoning: connection.reasoning,
+      firstChunkTimeoutSec: connection.firstChunkTimeoutSec,
+      idleTimeoutSec: connection.idleTimeoutSec,
     }
   }
 

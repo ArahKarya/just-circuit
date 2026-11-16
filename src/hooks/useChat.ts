@@ -3,7 +3,7 @@ import { toTurns } from "../lib/chat-history"
 import { useLiveData } from "../lib/live-data"
 import { streamChat } from "../lib/llm-client"
 import { filesKey, withFiles } from "../lib/project-ops"
-import { activeConnection, connectionProblem, DEFAULT_AI_SETTINGS, temperatureFor } from "../lib/providers"
+import { chatConnection, connectionProblem, DEFAULT_AI_SETTINGS, DEFAULT_HISTORY_LIMIT, temperatureFor } from "../lib/providers"
 import { changesFromReply } from "../lib/reply-changes"
 import { messagesRepo, projectsRepo, settingsRepo, TOPICS } from "../lib/repo"
 import { buildEditFailureRequest, buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
@@ -99,7 +99,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         const settings = { ...DEFAULT_AI_SETTINGS, ...(await settingsRepo.read()) }
         const history = await messagesRepo.list(current.id)
         await addMessage({ role: "user", content: text })
-        const connection = activeConnection(settings)
+        const connection = chatConnection(settings, current.settings, isAutoFix)
         const problem = connectionProblem(connection)
         if (problem || !connection) {
           await addMessage({ role: "assistant", content: problem ?? "", isError: true })
@@ -111,8 +111,8 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         abortRef.current = controller
         const result = await streamChat({
           connection,
-          system: buildSystemPrompt(current.files, current.entrypoint),
-          messages: [...toTurns(history), { role: "user", content: text }],
+          system: buildSystemPrompt(current.files, current.entrypoint, current.settings?.aiRules),
+          messages: [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), { role: "user", content: text }],
           temperature: temperatureFor(connection, settings.temperature),
           maxOutputTokens: settings.maxOutputTokens,
           signal: controller.signal,

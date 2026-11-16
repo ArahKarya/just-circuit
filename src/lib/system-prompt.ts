@@ -84,8 +84,14 @@ function renderFiles(files: ProjectFiles): string {
     .join("\n\n")
 }
 
-export function buildSystemPrompt(files: ProjectFiles, entrypoint: string): string {
-  return `${TSCIRCUIT_GUIDE}
+export const MAX_PROJECT_RULES_CHARS = 4000
+
+export function buildSystemPrompt(files: ProjectFiles, entrypoint: string, projectRules?: string): string {
+  const rules = projectRules?.trim()
+  const rulesSection = rules
+    ? `\n\n## Project rules (from the user, follow them unless they conflict with valid tscircuit)\n${rules.slice(0, MAX_PROJECT_RULES_CHARS)}`
+    : ""
+  return `${TSCIRCUIT_GUIDE}${rulesSection}
 
 ## Current project
 Entrypoint: ${entrypoint}

@@ -2,7 +2,7 @@ import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react"
 import { FilePlus, Files, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { buildTree } from "../lib/file-tree"
-import type { Project } from "../lib/types"
+import type { Preferences, Project } from "../lib/types"
 import { FileSearch } from "./files/FileSearch"
 import { FileTree, type FileActions } from "./files/FileTree"
 import { IconButton } from "./ui"
@@ -14,6 +14,8 @@ interface CodeEditorProps extends Omit<FileActions, "onOpen"> {
   onChange: (path: string, content: string) => void
   /** Returns false when the name is invalid (the caller shows why). */
   onCreateFile: (path: string) => boolean
+  editorPrefs: Preferences["editor"]
+  theme: "dark" | "light"
 }
 
 type ExplorerView = "files" | "search"
@@ -38,7 +40,7 @@ function languageOf(path: string): string {
   return "typescript"
 }
 
-export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCreateFile, ...fileActions }: CodeEditorProps) {
+export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCreateFile, editorPrefs, theme, ...fileActions }: CodeEditorProps) {
   const [showExplorer, setShowExplorer] = useState(true)
   const [view, setView] = useState<ExplorerView>("files")
   const [newFile, setNewFile] = useState<string | null>(null)
@@ -119,7 +121,7 @@ export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCrea
           <Editor
             path={`${project.id}/${activeFile}`}
             language={languageOf(activeFile)}
-            theme="vs-dark"
+            theme={theme === "light" ? "vs" : "vs-dark"}
             value={content}
             beforeMount={configureMonaco}
             onMount={(editor) => {
@@ -127,12 +129,13 @@ export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCrea
             }}
             onChange={(value) => onChange(activeFile, value ?? "")}
             options={{
-              fontSize: 13,
+              fontSize: editorPrefs.fontSize,
               fontFamily: "JetBrains Mono, Menlo, monospace",
-              minimap: { enabled: false },
+              minimap: { enabled: editorPrefs.minimap },
+              lineNumbers: editorPrefs.lineNumbers ? "on" : "off",
               scrollBeyondLastLine: false,
-              tabSize: 2,
-              wordWrap: "on",
+              tabSize: editorPrefs.tabSize,
+              wordWrap: editorPrefs.wordWrap ? "on" : "off",
               automaticLayout: true,
             }}
           />

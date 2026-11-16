@@ -1,26 +1,22 @@
 import { Plus, ShieldAlert, Trash2 } from "lucide-react"
-import { useState } from "react"
-import { connectionFromPreset, KIND_LABELS, PROVIDER_PRESETS } from "../lib/providers"
-import type { AiSettings, Connection } from "../lib/types"
-import { ConnectionEditor } from "./ConnectionEditor"
-import { Button, Field, Modal } from "./ui"
+import { useState, type Dispatch, type SetStateAction } from "react"
+import { connectionFromPreset, DEFAULT_HISTORY_LIMIT, KIND_LABELS, PROVIDER_PRESETS } from "../../lib/providers"
+import type { AiSettings, Connection } from "../../lib/types"
+import { ConnectionEditor } from "../ConnectionEditor"
+import { Button, Field, SelectField } from "../ui"
 
-interface SettingsDialogProps {
-  settings: AiSettings
-  onSave: (next: AiSettings) => Promise<void>
-  onClose: () => void
+interface AiTabProps {
+  draft: AiSettings
+  setDraft: Dispatch<SetStateAction<AiSettings>>
 }
 
 function clamp(value: number, min: number, max: number, fallback: number): number {
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
 }
 
-export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProps) {
-  const [draft, setDraft] = useState<AiSettings>(settings)
-  const [selectedId, setSelectedId] = useState<string | null>(settings.activeConnectionId ?? settings.connections[0]?.id ?? null)
+export function AiTab({ draft, setDraft }: AiTabProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(draft.activeConnectionId ?? draft.connections[0]?.id ?? null)
   const [presetId, setPresetId] = useState(PROVIDER_PRESETS[0].id)
-  const [isSaving, setIsSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
   const selected = draft.connections.find((c) => c.id === selectedId)
   const preset = PROVIDER_PRESETS.find((p) => p.id === presetId) ?? PROVIDER_PRESETS[0]
 
@@ -42,37 +38,18 @@ export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProp
     setDraft((d) => {
       const connections = d.connections.filter((c) => c.id !== id)
       const activeConnectionId = d.activeConnectionId === id ? (connections[0]?.id ?? null) : d.activeConnectionId
-      return { ...d, connections, activeConnectionId }
+      const autoFixConnectionId = d.autoFixConnectionId === id ? null : d.autoFixConnectionId
+      return { ...d, connections, activeConnectionId, autoFixConnectionId }
     })
     setSelectedId((current) => (current === id ? null : current))
   }
 
-  const save = async () => {
-    setIsSaving(true)
-    setSaveError(null)
-    try {
-      await onSave(draft)
-      onClose()
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Gagal menyimpan pengaturan")
-    } finally {
-      setIsSaving(false)
-    }
-  }
+  const connectionOptions = [
+    { value: "", label: "Sama dengan chat" },
+    ...draft.connections.map((c) => ({ value: c.id, label: `${c.name} · ${c.model || "?"}` })),
+  ]
 
   return (
-    <Modal
-      title="Pengaturan AI"
-      wide
-      onClose={onClose}
-      footer={
-        <>
-          {saveError && <span role="alert" className="mr-auto text-xs text-danger">{saveError}</span>}
-          <Button onClick={onClose}>Batal</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={isSaving}>Simpan</Button>
-        </>
-      }
-    >
       <div className="flex flex-col gap-5">
         <p className="flex gap-2 rounded-md border border-line bg-raised p-3 text-xs text-muted">
           <ShieldAlert size={16} className="shrink-0 text-accent" />
@@ -153,7 +130,24 @@ export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProp
             onChange={(e) => setDraft((d) => ({ ...d, autoFixAttempts: clamp(Math.round(e.target.valueAsNumber), 0, 5, 2) }))}
           />
         </section>
+
+        <section className="grid gap-3 sm:grid-cols-2">
+          <SelectField
+            label="Model untuk auto-fix"
+            options={connectionOptions}
+            value={draft.autoFixConnectionId ?? ""}
+            onChange={(e) => setDraft((d) => ({ ...d, autoFixConnectionId: e.target.value || null }))}
+          />
+          <Field
+            label="Riwayat chat yang dikirim"
+            type="number"
+            min={2}
+            max={100}
+            hint="Jumlah pesan sebelumnya. Lebih sedikit = lebih hemat token."
+            value={draft.historyLimit ?? DEFAULT_HISTORY_LIMIT}
+            onChange={(e) => setDraft((d) => ({ ...d, historyLimit: clamp(Math.round(e.target.valueAsNumber), 2, 100, DEFAULT_HISTORY_LIMIT) }))}
+          />
+        </section>
       </div>
-    </Modal>
   )
 }

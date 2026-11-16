@@ -108,6 +108,23 @@ export async function streamChat(request: ChatRequest): Promise<ChatResult> {
   return { text: reply, truncated: state.finishReason === "length" }
 }
 
+export interface ConnectionTestResult {
+  ms: number
+  reply: string
+}
+
+/** Sends a tiny prompt through the server to check URL, key and model. */
+export async function testConnection(connection: Connection): Promise<ConnectionTestResult> {
+  const response = await fetch("/api/llm/test", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ connection: toServerConnection(connection), connectionId: connection.id }),
+  })
+  if (!response.ok) throw new Error(await readErrorMessage(response))
+  const body = (await response.json()) as { data: ConnectionTestResult }
+  return body.data
+}
+
 export async function fetchModels(connection: Connection): Promise<string[]> {
   const response = await fetch("/api/llm/models", {
     method: "POST",

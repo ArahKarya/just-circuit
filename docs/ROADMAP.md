@@ -47,15 +47,16 @@ Rencana awal:
 - Riwayat versi: setiap proyek repo git, commit otomatis tiap perubahan AI; lihat diff dan kembalikan versi.
 - Tempat sampah 30 hari; impor ZIP / folder tsci / URL GitHub; ekspor semua.
 
-## Fase 2 — Pengaturan
+## Fase 2 — Pengaturan (selesai 16 Nov 2026)
 
-Global dan per proyek (per proyek menimpa global).
-
-- AI per koneksi: temperature, max token, budget thinking, timeout first-chunk dan idle; model per tugas (chat vs auto-fix); aturan/system prompt tambahan per proyek; tombol "Tes koneksi".
-- Editor: tema, font, tab size, word wrap, minimap, mode Vim.
-- Preview: jeda auto-run, tab default, auto-run on/off.
-- Default board: jumlah layer, ukuran, clearance DRC.
-- Aplikasi: tema terang/gelap, shortcut; backup/restore pengaturan (tanpa API key).
+- [x] Dialog Pengaturan bertab: AI, Tampilan & editor, Proyek ini, Cadangan.
+- [x] Per koneksi: level thinking (opsi `reasoning` AI SDK), batas waktu jawaban pertama & diam, temperature, tombol "Tes koneksi".
+- [x] Model terpisah untuk auto-fix; jumlah riwayat chat yang dikirim.
+- [x] Per proyek: koneksi AI sendiri dan aturan tambahan untuk AI (masuk system prompt).
+- [x] Tema gelap/terang/ikuti sistem; editor (font, tab, bungkus baris, nomor baris, minimap); preview (jeda build, tab awal).
+- [x] Cadangan & pulihkan pengaturan (tanpa API key).
+- [ ] Mode Vim di editor (butuh paket monaco-vim, belum).
+- [ ] Default board (layer, clearance) sebagai field terstruktur — sementara lewat "aturan tambahan".
 
 ## Fase 3 — Terminal
 

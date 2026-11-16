@@ -7,6 +7,7 @@ import { logger } from "./logger.js"
 import { isPasswordHash } from "./security/password.js"
 import { createSecretBox, loadSecretKey } from "./security/secret-box.js"
 import { createProjectStore, TRASH_RETENTION_MS } from "./storage/projects.js"
+import { createPreferencesStore } from "./storage/preferences.js"
 import { createSettingsStore } from "./storage/settings.js"
 import { createWorkspaceStore } from "./storage/workspaces.js"
 
@@ -43,7 +44,7 @@ const auth = createAuth({
 const projects = createProjectStore(config.dataDir)
 const purged = await projects.purgeOlderThan(Date.now() - TRASH_RETENTION_MS)
 if (purged > 0) logger.info("trash emptied", { purged })
-const app = createApp({ auth, projects, settings: createSettingsStore(config.dataDir, box), workspaces: createWorkspaceStore(projects) })
+const app = createApp({ auth, projects, settings: createSettingsStore(config.dataDir, box), workspaces: createWorkspaceStore(projects), preferences: createPreferencesStore(config.dataDir) })
 
 const server = app.listen(config.port, config.host, () => {
   logger.info("CDS API listening", {

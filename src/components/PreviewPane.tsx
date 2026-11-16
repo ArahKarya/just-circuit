@@ -4,7 +4,7 @@ import { ErrorBoundary } from "react-error-boundary"
 import { useDebounced } from "../hooks/useDebounced"
 import { filesKey } from "../lib/project-ops"
 import { classifyRunErrors } from "../lib/run-status"
-import type { ProjectFiles, RunStatus } from "../lib/types"
+import type { PreviewTab, ProjectFiles, RunStatus } from "../lib/types"
 import { PreviewCrash } from "./PreviewCrash"
 
 interface PreviewPaneProps {
@@ -13,12 +13,13 @@ interface PreviewPaneProps {
   onStatus: (status: RunStatus) => void
   /** Latest rendered circuit, used by the layout editor. */
   onCircuitJson: (circuitJson: unknown[]) => void
+  /** Pause after typing before the circuit is rebuilt. */
+  debounceMs: number
+  defaultTab: PreviewTab
 }
 
-const PREVIEW_DEBOUNCE_MS = 700
-
-function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson }: PreviewPaneProps) {
-  const debouncedFiles = useDebounced(files, PREVIEW_DEBOUNCE_MS)
+function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson, debounceMs, defaultTab }: PreviewPaneProps) {
+  const debouncedFiles = useDebounced(files, debounceMs)
   const revision = useMemo(() => filesKey(debouncedFiles), [debouncedFiles])
   const fsMap = useMemo(() => ({ ...debouncedFiles }), [debouncedFiles])
 
@@ -41,7 +42,7 @@ function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson }: Preview
           mainComponentPath={entrypoint}
           showFileMenu
           showToggleFullScreen
-          defaultActiveTab="pcb"
+          defaultActiveTab={defaultTab}
           onRenderStarted={handleStarted}
           onRunCompleted={handleCompleted}
           onRenderFinished={handleRenderFinished}

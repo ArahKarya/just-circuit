@@ -7,10 +7,19 @@ import { InvalidPathError, isEditablePath, listEditableFiles, readEditableFiles,
 import { commitAll, ensureRepo, filesAt, hasRepo, HistoryUnavailableError, isDirty, isGitAvailable, listVersions, versionLabel, versionDiff, type Version } from "./history.js"
 import { scaffoldFiles } from "./scaffold.js"
 
+/** Per-project options; empty fields fall back to the global settings. */
+export interface ProjectSettings {
+  /** Extra instructions for the AI in this project (parts to prefer, board limits…). */
+  aiRules?: string
+  /** Connection used for this project's chat (null: the global active one). */
+  connectionId?: string | null
+}
+
 export interface ProjectMeta {
   id: string
   name: string
   entrypoint: string
+  settings?: ProjectSettings
   workspaceId: string
   createdAt: number
   updatedAt: number
@@ -50,6 +59,7 @@ export interface ProjectPatch {
   files?: FileMap
   /** Also record a version with this message (e.g. after an AI change). */
   commitMessage?: string
+  settings?: ProjectSettings
 }
 
 const MANUAL_CHANGES = "Perubahan manual"
@@ -257,6 +267,7 @@ export function createProjectStore(dataDir: string) {
         ...meta,
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.entrypoint !== undefined ? { entrypoint: patch.entrypoint } : {}),
+        ...(patch.settings !== undefined ? { settings: patch.settings } : {}),
         updatedAt: Date.now(),
       }
       await writeJsonFile(path.join(dir, META_FILE), next)

@@ -3,6 +3,9 @@ export type ProviderKind = "openai-compatible" | "anthropic" | "gemini"
 /** "auto" sends temperature unless the model is known to reject it. */
 export type TemperatureMode = "auto" | "send" | "omit"
 
+/** How much the model thinks before answering; provider-default sends nothing. */
+export type ReasoningLevel = "provider-default" | "none" | "low" | "medium" | "high"
+
 export interface Connection {
   id: string
   name: string
@@ -11,6 +14,10 @@ export interface Connection {
   apiKey: string
   model: string
   temperatureMode?: TemperatureMode
+  reasoning?: ReasoningLevel
+  /** Seconds to wait for the first chunk / between chunks (default from the server's env). */
+  firstChunkTimeoutSec?: number
+  idleTimeoutSec?: number
   /** The server holds a key for this connection (keys are never sent back to the browser). */
   hasApiKey?: boolean
   /** Remove the stored key on the next save. */
@@ -19,6 +26,10 @@ export interface Connection {
 
 export interface AiSettings {
   activeConnectionId: string | null
+  /** Connection for automatic build fixes (null: same as chat). */
+  autoFixConnectionId?: string | null
+  /** Earlier chat messages sent with each request. */
+  historyLimit?: number
   connections: Connection[]
   temperature: number
   maxOutputTokens: number
@@ -63,11 +74,28 @@ export interface TrashEntry {
   fileCount: number
 }
 
+export interface ProjectSettings {
+  /** Extra instructions for the AI in this project. */
+  aiRules?: string
+  /** Connection for this project's chat (null: the global active one). */
+  connectionId?: string | null
+}
+
+export type ThemeSetting = "dark" | "light" | "system"
+export type PreviewTab = "pcb" | "schematic" | "cad" | "bom"
+
+export interface Preferences {
+  theme: ThemeSetting
+  editor: { fontSize: number; tabSize: 2 | 4; wordWrap: boolean; minimap: boolean; lineNumbers: boolean }
+  preview: { debounceMs: number; defaultTab: PreviewTab }
+}
+
 export interface Project {
   id: string
   name: string
   files: ProjectFiles
   entrypoint: string
+  settings?: ProjectSettings
   createdAt: number
   updatedAt: number
 }

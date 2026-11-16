@@ -11,10 +11,11 @@ import { LayoutEditor } from "./components/LayoutEditor"
 import { CodeEditor } from "./components/CodeEditor"
 import { PreviewPane } from "./components/PreviewPane"
 import { ProjectsDialog } from "./components/projects/ProjectsDialog"
-import { SettingsDialog } from "./components/SettingsDialog"
+import { SettingsDialog } from "./components/settings/SettingsDialog"
 import { Button, IconButton } from "./components/ui"
 import { useAiSettings } from "./hooks/useAiSettings"
 import { useAuth } from "./hooks/useAuth"
+import { usePreferences } from "./hooks/usePreferences"
 import { useBrowserMigration } from "./hooks/useBrowserMigration"
 import { useChat } from "./hooks/useChat"
 import { useFileActions } from "./hooks/useFileActions"
@@ -23,7 +24,7 @@ import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
 import { addImportedComponent, withFiles } from "./lib/project-ops"
-import { activeConnection, connectionProblem } from "./lib/providers"
+import { chatConnection, connectionProblem } from "./lib/providers"
 import type { RunStatus } from "./lib/types"
 
 type LeftTab = "chat" | "code"
@@ -31,7 +32,7 @@ type DialogName = "settings" | "projects" | "import" | "history" | null
 
 const STATUS_STYLES: Record<RunStatus["state"], { label: string; className: string }> = {
   idle: { label: "Siap", className: "text-muted" },
-  running: { label: "Membangun…", className: "text-amber-300" },
+  running: { label: "Membangun…", className: "text-warn" },
   ok: { label: "Build OK", className: "text-accent" },
   error: { label: "Build error", className: "text-danger" },
 }
@@ -54,6 +55,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const projects = useProjects(migration.ready)
   const working = useWorkingProject(projects.active, projects.save)
   const ai = useAiSettings()
+  const { preferences, theme } = usePreferences()
   const [leftTab, setLeftTab] = useState<LeftTab>("chat")
   const [dialog, setDialog] = useState<DialogName>(null)
   const [activeFile, setActiveFile] = useState<string | null>(null)
@@ -66,7 +68,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
 
   const chat = useChat({ project, runStatus, onApplyProject: working.apply })
   const fileActions = useFileActions(project, working, activeFile ?? undefined, setActiveFile)
-  const connection = activeConnection(ai.settings)
+  const connection = chatConnection(ai.settings, project?.settings)
   const problem = connectionProblem(connection)
   const currentFile = project && activeFile && project.files[activeFile] !== undefined ? activeFile : project?.entrypoint
 
@@ -147,7 +149,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
         </button>
         <span className={`ml-2 text-xs ${status.className}`} title={runStatus.errors.join("\n")}>{status.label}</span>
         {runStatus.warnings.length > 0 && (
-          <span className="ml-2 cursor-help text-xs text-amber-400" title={runStatus.warnings.join("\n\n")}>
+          <span className="ml-2 cursor-help text-xs text-warn" title={runStatus.warnings.join("\n\n")}>
             {runStatus.warnings.length} peringatan
           </span>
         )}
@@ -157,7 +159,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           </Button>
           <Button onClick={() => setDialog("history")}><History size={15} />Riwayat</Button>
           <Button onClick={() => setDialog("import")}><PackagePlus size={15} />Impor part JLCPCB</Button>
-          <IconButton label="Pengaturan AI" onClick={() => setDialog("settings")}><Settings size={17} /></IconButton>
+          <IconButton label="Pengaturan" onClick={() => setDialog("settings")}><Settings size={17} /></IconButton>
           {onLogout && <IconButton label="Keluar" onClick={onLogout}><LogOut size={16} /></IconButton>}
         </div>
       </header>
@@ -189,19 +191,30 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
                 onSelectFile={setActiveFile}
                 onChange={(path, content) => working.edit(withFiles(project, { [path]: content }))}
                 {...fileActions}
+                editorPrefs={preferences.editor}
+                theme={theme}
               />
             )}
           </div>
         </section>
         <section className="relative min-h-0 flex-1">
-          <PreviewPane files={files} entrypoint={project.entrypoint} onStatus={setRunStatus} onCircuitJson={setCircuitJson} />
+          <PreviewPane
+            files={files}
+            entrypoint={project.entrypoint}
+            onStatus={setRunStatus}
+            onCircuitJson={setCircuitJson}
+            debounceMs={preferences.preview.debounceMs}
+            defaultTab={preferences.preview.defaultTab}
+          />
           {isLayoutMode && (
             <LayoutEditor circuitJson={layoutCircuit.current} onMove={handleLayoutMove} onDone={() => setIsLayoutMode(false)} />
           )}
         </section>
       </main>
 
-      {dialog === "settings" && <SettingsDialog settings={ai.settings} onSave={ai.save} onClose={closeDialog} />}
+      {dialog === "settings" && (
+        <SettingsDialog settings={ai.settings} onSaveAi={ai.save} preferences={preferences} project={project} onClose={closeDialog} />
+      )}
       {dialog === "projects" && <ProjectsDialog projects={projects} onClose={closeDialog} />}
       {dialog === "history" && <HistoryDialog projectId={project.id} flush={working.flush} onClose={closeDialog} />}
       <ImportComponentDialog2

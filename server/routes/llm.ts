@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express"
-import { streamText } from "ai"
+import { generateText, streamText } from "ai"
 import { config } from "../config.js"
 import { errorMessage, logger } from "../logger.js"
 import { describeProviderError } from "../llm/errors.js"
@@ -7,7 +7,20 @@ import { createIdleTimer } from "../llm/idle-timer.js"
 import { UrlGuardError } from "../net/url-guard.js"
 import { createLanguageModel, listModels } from "../llm/providers.js"
 import { chatRequestSchema, modelsRequestSchema } from "../llm/schema.js"
-import type { SettingsStore } from "../storage/settings.js"
+import type { ResolvedConnection, SettingsStore } from "../storage/settings.js"
+import type { Connection } from "../llm/schema.js"
+
+const TEST_TIMEOUT_MS = 90_000
+const TEST_REPLY_CHARS = 200
+
+/**
+ * Connection described by a models/test request. An empty apiKey falls back to the stored key,
+ * but then the stored URL and kind are used too: a stored key never goes to a URL from the request.
+ */
+async function connectionFromForm(settings: SettingsStore, connection: Connection, connectionId: string | undefined): Promise<Connection & Partial<ResolvedConnection>> {
+  const saved = !connection.apiKey && connectionId ? await settings.resolve(connectionId) : null
+  return saved ? { ...saved, model: connection.model } : connection
+}
 
 /** One NDJSON line streamed to the browser. */
 export type ChatStreamEvent =
@@ -50,16 +63,20 @@ async function handleChat(settings: SettingsStore, req: Request, res: Response):
     return
   }
 
+  const timeouts = {
+    firstMs: connection.firstChunkTimeoutSec ? connection.firstChunkTimeoutSec * 1000 : config.firstChunkTimeoutMs,
+    idleMs: connection.idleTimeoutSec ? connection.idleTimeoutSec * 1000 : config.idleTimeoutMs,
+  }
   const clientGone = new AbortController()
   const upstream = new AbortController()
   let stopReason: "first" | "idle" | "total" | null = null
   const idle = createIdleTimer(
-    config.idleTimeoutMs,
+    timeouts.idleMs,
     (phase) => {
       stopReason = phase === "first" ? "first" : "idle"
       upstream.abort()
     },
-    config.firstChunkTimeoutMs,
+    timeouts.firstMs,
   )
   const total = setTimeout(() => {
     stopReason = "total"
@@ -80,6 +97,7 @@ async function handleChat(settings: SettingsStore, req: Request, res: Response):
       system: body.system,
       messages: body.messages,
       temperature: body.temperature,
+      ...(connection.reasoning && connection.reasoning !== "provider-default" ? { reasoning: connection.reasoning } : {}),
       maxOutputTokens: body.maxOutputTokens,
       abortSignal: AbortSignal.any([clientGone.signal, upstream.signal]),
       maxRetries: 1,
@@ -105,7 +123,7 @@ async function handleChat(settings: SettingsStore, req: Request, res: Response):
     writeEvent(res, { type: "done", finishReason })
   } catch (error) {
     if (!clientGone.signal.aborted) {
-      const message = timeoutMessage(stopReason) ?? describeProviderError(error)
+      const message = timeoutMessage(stopReason, timeouts) ?? describeProviderError(error)
       logger.warn("llm chat failed", { ...logContext, seconds: Math.round((Date.now() - startedAt) / 1000), error: message })
       writeEvent(res, { type: "error", message })
     }
@@ -120,12 +138,12 @@ function formatDuration(ms: number): string {
   return ms >= 60_000 ? `${Math.round(ms / 60_000)} menit` : `${Math.round(ms / 1000)} detik`
 }
 
-function timeoutMessage(reason: "first" | "idle" | "total" | null): string | null {
+function timeoutMessage(reason: "first" | "idle" | "total" | null, timeouts: { firstMs: number; idleMs: number }): string | null {
   if (reason === "first") {
-    return `AI belum mengirim balasan apa pun setelah ${formatDuration(config.firstChunkTimeoutMs)}, jadi dihentikan. Model mungkin antre atau kuota provider habis; coba model yang lebih cepat (mis. Sonnet).`
+    return `AI belum mengirim balasan apa pun setelah ${formatDuration(timeouts.firstMs)}, jadi dihentikan. Model mungkin antre atau kuota provider habis; coba model yang lebih cepat (mis. Sonnet), atau naikkan batas waktunya di Pengaturan.`
   }
   if (reason === "idle") {
-    return `AI berhenti mengirim selama ${formatDuration(config.idleTimeoutMs)} di tengah jawaban, jadi dihentikan. Provider atau model ini mungkin sedang bermasalah; coba model lain.`
+    return `AI berhenti mengirim selama ${formatDuration(timeouts.idleMs)} di tengah jawaban, jadi dihentikan. Provider atau model ini mungkin sedang bermasalah; coba model lain.`
   }
   if (reason === "total") {
     return `Jawaban AI melebihi ${formatDuration(config.upstreamTimeoutMs)}, jadi dihentikan. Coba minta bagian yang lebih kecil.`
@@ -140,13 +158,39 @@ async function handleModels(settings: SettingsStore, req: Request, res: Response
     return
   }
   try {
-    const { connection, connectionId } = parsed.data
-    const saved = !connection.apiKey && connectionId ? await settings.resolve(connectionId) : null
-    // A stored key is only ever sent to the provider it was saved for, never to a URL from this request.
-    const models = await listModels(saved ? { ...saved, model: connection.model } : connection)
+    const models = await listModels(await connectionFromForm(settings, parsed.data.connection, parsed.data.connectionId))
     res.json({ success: true, data: models })
   } catch (error) {
     sendError(res, error instanceof UrlGuardError ? 400 : 502, errorMessage(error))
+  }
+}
+
+/** Sends a tiny prompt to check URL, key and model, and reports how long it took. */
+async function handleTest(settings: SettingsStore, req: Request, res: Response): Promise<void> {
+  const parsed = modelsRequestSchema.safeParse(req.body)
+  if (!parsed.success) {
+    sendError(res, 400, parsed.error.issues.map((issue) => issue.message).join("; "))
+    return
+  }
+  const connection = await connectionFromForm(settings, parsed.data.connection, parsed.data.connectionId)
+  if (!connection.model) {
+    sendError(res, 400, "Model wajib diisi")
+    return
+  }
+  const startedAt = Date.now()
+  try {
+    const model = await createLanguageModel({ ...connection, model: connection.model })
+    const result = await generateText({
+      model,
+      prompt: "Balas hanya dengan kata: OK",
+      maxOutputTokens: 1024,
+      maxRetries: 0,
+      abortSignal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+    })
+    res.json({ success: true, data: { ms: Date.now() - startedAt, reply: result.text.trim().slice(0, TEST_REPLY_CHARS) } })
+  } catch (error) {
+    const message = error instanceof DOMException && error.name === "TimeoutError" ? `Tidak ada jawaban dalam ${TEST_TIMEOUT_MS / 1000} detik` : describeProviderError(error)
+    sendError(res, error instanceof UrlGuardError ? 400 : 502, message)
   }
 }
 
@@ -154,5 +198,6 @@ export function llmRouter(settings: SettingsStore): Router {
   const router = Router()
   router.post("/chat", (req, res, next) => handleChat(settings, req, res).catch(next))
   router.post("/models", (req, res, next) => handleModels(settings, req, res).catch(next))
+  router.post("/test", (req, res, next) => handleTest(settings, req, res).catch(next))
   return router
 }

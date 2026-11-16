@@ -50,7 +50,7 @@ export function PendingReply({ streamingText, reasoningText, busySince }: Pendin
         )}
         {text && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-muted">{text}</p>}
         {isSilent && seconds >= SLOW_HINT_AFTER_S && (
-          <p className="text-xs text-amber-300">
+          <p className="text-xs text-warn">
             Belum ada respons. Model besar seperti Opus bisa berpikir beberapa menit tanpa terlihat (ditunggu sampai 5 menit). Kalau tidak sabar, klik stop lalu pakai Sonnet.
           </p>
         )}
