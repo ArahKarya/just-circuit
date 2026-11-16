@@ -13,6 +13,7 @@ import { createSecretBox } from "./security/secret-box"
 import { createProjectStore } from "./storage/projects"
 import { createSettingsStore } from "./storage/settings"
 import { createGlobalMemoryStore } from "./storage/global-memory"
+import { createLibraryStore } from "./storage/library"
 import { createPreferencesStore } from "./storage/preferences"
 import { createWorkspaceStore } from "./storage/workspaces"
 
@@ -30,7 +31,7 @@ beforeAll(async () => {
     loginRateLimitPerMinute: 100,
   })
   const projects = createProjectStore(dataDir)
-  const app = createApp({ auth, projects, settings: createSettingsStore(dataDir, createSecretBox(randomBytes(32))), workspaces: createWorkspaceStore(projects), preferences: createPreferencesStore(dataDir), memory: createGlobalMemoryStore(dataDir) })
+  const app = createApp({ auth, projects, settings: createSettingsStore(dataDir, createSecretBox(randomBytes(32))), workspaces: createWorkspaceStore(projects), preferences: createPreferencesStore(dataDir), memory: createGlobalMemoryStore(dataDir), library: createLibraryStore(dataDir) })
   server = app.listen(0, "127.0.0.1")
   await new Promise((resolve) => server.once("listening", resolve))
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`

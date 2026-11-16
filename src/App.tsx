@@ -1,11 +1,13 @@
 import type { ManualEditEvent } from "@tscircuit/core"
 import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@tscircuit/runframe/runner"
-import { CircuitBoard, Code2, FolderOpen, History, LogOut, TerminalSquare, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
+import { BookOpen, CircuitBoard, Code2, FolderOpen, History, LogOut, TerminalSquare, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
 import toast from "react-hot-toast"
 import { ChatPanel } from "./components/ChatPanel"
 import { HistoryDialog } from "./components/history/HistoryDialog"
+import { LibraryDialog } from "./components/library/LibraryDialog"
+import { SaveToLibraryDialog } from "./components/library/SaveToLibraryDialog"
 import { TerminalPanel } from "./components/terminal/TerminalPanel"
 import { LoginScreen } from "./components/LoginScreen"
 import { LayoutEditor } from "./components/LayoutEditor"
@@ -31,7 +33,7 @@ import { chatConnection, connectionProblem } from "./lib/providers"
 import type { RunStatus } from "./lib/types"
 
 type LeftTab = "chat" | "code"
-type DialogName = "settings" | "projects" | "import" | "history" | null
+type DialogName = "settings" | "projects" | "import" | "history" | "library" | null
 
 const STATUS_STYLES: Record<RunStatus["state"], { label: string; className: string }> = {
   idle: { label: "Siap", className: "text-muted" },
@@ -66,6 +68,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const [circuitJson, setCircuitJson] = useState<unknown[] | null>(null)
   const [isLayoutMode, setIsLayoutMode] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
+  /** File or folder being saved to the library. */
+  const [libraryPath, setLibraryPath] = useState<string | null>(null)
 
   // Ctrl+` (like VS Code) opens and closes the terminal.
   useEffect(() => {
@@ -170,12 +174,13 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <Button onClick={openLayoutEditor} disabled={!canEditLayout || isLayoutMode} title={canEditLayout ? "Seret komponen di PCB" : "Butuh build yang berhasil"}>
-            <Move size={15} />Atur posisi
+          <Button aria-label="Atur posisi" onClick={openLayoutEditor} disabled={!canEditLayout || isLayoutMode} title={canEditLayout ? "Seret komponen di PCB" : "Butuh build yang berhasil"}>
+            <Move size={15} /><span className="hidden xl:inline">Atur posisi</span>
           </Button>
-          <Button onClick={() => setShowTerminal((open) => !open)} aria-pressed={showTerminal} title="Terminal (Ctrl+`)"><TerminalSquare size={15} />Terminal</Button>
-          <Button onClick={() => setDialog("history")}><History size={15} />Riwayat</Button>
-          <Button onClick={() => setDialog("import")}><PackagePlus size={15} />Impor part JLCPCB</Button>
+          <Button aria-label="Terminal" onClick={() => setShowTerminal((open) => !open)} aria-pressed={showTerminal} title="Terminal (Ctrl+`)"><TerminalSquare size={15} /><span className="hidden xl:inline">Terminal</span></Button>
+          <Button aria-label="Riwayat" onClick={() => setDialog("history")}><History size={15} /><span className="hidden xl:inline">Riwayat</span></Button>
+          <Button aria-label="Library" onClick={() => setDialog("library")}><BookOpen size={15} /><span className="hidden xl:inline">Library</span></Button>
+          <Button aria-label="Impor part JLCPCB" onClick={() => setDialog("import")}><PackagePlus size={15} /><span className="hidden xl:inline">Impor part JLCPCB</span></Button>
           <IconButton label="Pengaturan" onClick={() => setDialog("settings")}><Settings size={17} /></IconButton>
           {onLogout && <IconButton label="Keluar" onClick={onLogout}><LogOut size={16} /></IconButton>}
         </div>
@@ -208,6 +213,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
                 onSelectFile={setActiveFile}
                 onChange={(path, content) => working.edit(withFiles(project, { [path]: content }))}
                 {...fileActions}
+                onSaveToLibrary={setLibraryPath}
                 editorPrefs={preferences.editor}
                 theme={theme}
               />
@@ -242,6 +248,18 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
         <SettingsDialog settings={ai.settings} onSaveAi={ai.save} preferences={preferences} project={project} onClose={closeDialog} />
       )}
       {dialog === "projects" && <ProjectsDialog projects={projects} onClose={closeDialog} />}
+      {dialog === "library" && (
+        <LibraryDialog
+          project={project}
+          onInsert={async (next, message, file) => {
+            await working.apply(next, message)
+            setLeftTab("code")
+            setActiveFile(file)
+          }}
+          onClose={closeDialog}
+        />
+      )}
+      {libraryPath && <SaveToLibraryDialog project={project} path={libraryPath} onClose={() => setLibraryPath(null)} />}
       {dialog === "history" && <HistoryDialog projectId={project.id} flush={working.flush} onClose={closeDialog} />}
       <ImportComponentDialog2
         isOpen={dialog === "import"}

@@ -88,8 +88,8 @@ export async function syncEditableFiles(root: string, next: FileMap): Promise<vo
     if (Buffer.byteLength(content) > MAX_FILE_BYTES) throw new InvalidPathError(`${relative} lebih dari 1 MB`)
     return { full: resolveInside(root, relative), content }
   })
-  const current = await readEditableFiles(root)
   await mkdir(root, { recursive: true })
+  const current = await readEditableFiles(root)
   // Delete first: on case-insensitive disks (macOS) "A.tsx" -> "a.tsx" is the same file,
   // and deleting after the write would remove the renamed file.
   for (const relative of Object.keys(current)) {

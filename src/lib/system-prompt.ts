@@ -25,6 +25,11 @@ default-exports a component that returns a <board>.
 - <hole diameter="3.2mm" pcbX={12} pcbY={8} />
 - <group name="power"> ... </group> to group related parts.
 
+## Packages
+- Packages from the tscircuit registry can be imported as \`import { X } from "@tsci/<author>.<name>"\`,
+  and npm packages by name; the preview downloads them (needs internet). Only use packages you
+  are sure exist; otherwise build the part with <chip> or ask the user to import it from JLCPCB.
+
 ## Connections
 - <trace from=".R1 > .pin2" to=".D1 > .anode" />
 - Pins are pin1, pin2, ... or named pins (anode, cathode, gate, or chip pinLabels like .VCC).
@@ -94,8 +99,11 @@ function renderFiles(files: ProjectFiles): string {
 
 export const MAX_PROJECT_RULES_CHARS = 4000
 const MAX_MEMORY_PROMPT_CHARS = 8000
+const MAX_LIBRARY_PROMPT_CHARS = 4000
 
 export interface PromptContext {
+  /** Catalog of the user's library (describeLibrary). */
+  library?: string
   projectRules?: string
   projectMemory?: string
   globalMemory?: string
@@ -110,7 +118,12 @@ export function buildSystemPrompt(files: ProjectFiles, entrypoint: string, conte
   const extra =
     section("Project rules (from the user, follow them unless they conflict with valid tscircuit)", context.projectRules, MAX_PROJECT_RULES_CHARS) +
     section("Memory: about the user (all projects)", context.globalMemory, MAX_MEMORY_PROMPT_CHARS) +
-    section("Memory: this project (decisions made earlier)", context.projectMemory, MAX_MEMORY_PROMPT_CHARS)
+    section("Memory: this project (decisions made earlier)", context.projectMemory, MAX_MEMORY_PROMPT_CHARS) +
+    section(
+      "User library (blocks saved from other projects; suggest one when it fits and tell the user to insert it with the Library button, it lands in lib/<name>/)",
+      context.library,
+      MAX_LIBRARY_PROMPT_CHARS,
+    )
   return `${TSCIRCUIT_GUIDE}${extra}
 
 ## Current project

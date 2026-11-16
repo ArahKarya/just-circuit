@@ -7,7 +7,8 @@ import { filesKey, withFiles } from "../lib/project-ops"
 import { chatConnection, connectionProblem, DEFAULT_AI_SETTINGS, DEFAULT_HISTORY_LIMIT, temperatureFor } from "../lib/providers"
 import { changesFromReply } from "../lib/reply-changes"
 import { appendMemory, extractMemoryNotes } from "../lib/memory"
-import { memoryRepo, messagesRepo, projectsRepo, settingsRepo, TOPICS } from "../lib/repo"
+import { describeLibrary } from "../lib/library"
+import { libraryRepo, memoryRepo, messagesRepo, projectsRepo, settingsRepo, TOPICS } from "../lib/repo"
 import { buildEditFailureRequest, buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
 import type { ChatMessage, Project, RunStatus } from "../lib/types"
 
@@ -113,11 +114,12 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         messagesRepo.add({ id: crypto.randomUUID(), projectId: current.id, createdAt: Date.now(), ...message })
       try {
         // Read settings and history from the database so nothing saved a moment ago is missed.
-        const [stored, history, projectMemory, globalMemory] = await Promise.all([
+        const [stored, history, projectMemory, globalMemory, library] = await Promise.all([
           settingsRepo.read(),
           messagesRepo.list(current.id),
           memoryRepo.readProject(current.id).catch(() => ""),
           memoryRepo.readGlobal().catch(() => ""),
+          libraryRepo.list().catch(() => []),
         ])
         const settings = { ...DEFAULT_AI_SETTINGS, ...stored }
         await addMessage({ role: "user", content: text })
@@ -133,7 +135,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         abortRef.current = controller
         const result = await streamChat({
           connection,
-          system: buildSystemPrompt(current.files, current.entrypoint, { projectRules: current.settings?.aiRules, projectMemory, globalMemory }),
+          system: buildSystemPrompt(current.files, current.entrypoint, { projectRules: current.settings?.aiRules, projectMemory, globalMemory, library: describeLibrary(library) }),
           messages: [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), { role: "user", content: text }],
           temperature: temperatureFor(connection, settings.temperature),
           maxOutputTokens: settings.maxOutputTokens,

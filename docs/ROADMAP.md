@@ -68,7 +68,7 @@ Rencana awal:
 ## Fase 4 — AI lebih pintar
 
 - [x] Memori AI: memori proyek (`.cds/memory.md`) dan global (`CDS_DATA_DIR/memory.md`), selalu dikirim ke AI; AI mencatat sendiri lewat blok `memory`; bisa diedit di Pengaturan → Memori.
-- [ ] Library komponen: simpan file/folder ke library, sisipkan ke proyek lain, AI tahu isi library; panduan paket `@tsci/...` dan npm.
+- [x] Library komponen (`CDS_DATA_DIR/library/`): simpan file/folder ke library (ikon buku di penjelajah file), sisipkan ke proyek lain ke `lib/<nama>/` + import otomatis, AI tahu katalog library; prompt menjelaskan paket `@tsci/...` dan npm.
 - [ ] AI agen: baca file, jalankan build, baca error, cari part JLCPCB.
 - [ ] AI mengusulkan perintah terminal, dijalankan setelah disetujui.
 - [ ] Panel DRC/ERC yang bisa diklik ke komponen.

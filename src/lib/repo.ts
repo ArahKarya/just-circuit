@@ -1,4 +1,5 @@
 import { api } from "./api"
+import type { LibraryItem, LibraryItemWithFiles } from "./library"
 import { notifyChange } from "./live-data"
 import type { AiSettings, ChatMessage, Connection, Preferences, Project, ProjectFiles, ProjectSettings, ProjectSummary, TrashEntry, Version, Workspace } from "./types"
 
@@ -11,6 +12,7 @@ export const TOPICS = {
   workspaces: "workspaces",
   preferences: "preferences",
   globalMemory: "memory:global",
+  library: "library",
   projectMemory: (id: string) => `memory:${id}`,
   trash: "trash",
 } as const
@@ -57,6 +59,24 @@ export const projectsRepo = {
   async move(id: string, workspaceId: string): Promise<void> {
     await api.post<ProjectSummary>(`${projectUrl(id)}/move`, { workspaceId })
     notifyChange(TOPICS.projects, TOPICS.workspaces, TOPICS.project(id))
+  },
+}
+
+export const libraryRepo = {
+  list: () => api.get<LibraryItem[]>("/api/library"),
+  get: (id: string) => api.get<LibraryItemWithFiles>(`/api/library/${encodeURIComponent(id)}`),
+  async create(input: { name: string; description: string; entry: string; files: ProjectFiles }): Promise<LibraryItem> {
+    const item = await api.post<LibraryItem>("/api/library", input)
+    notifyChange(TOPICS.library)
+    return item
+  },
+  async update(id: string, patch: { name?: string; description?: string }): Promise<void> {
+    await api.patch(`/api/library/${encodeURIComponent(id)}`, patch)
+    notifyChange(TOPICS.library)
+  },
+  async remove(id: string): Promise<void> {
+    await api.delete(`/api/library/${encodeURIComponent(id)}`)
+    notifyChange(TOPICS.library)
   },
 }
 

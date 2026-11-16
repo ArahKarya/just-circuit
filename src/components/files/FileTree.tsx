@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, FileCode2, FileJson, FileText, Folder, Pencil, Star, Trash2 } from "lucide-react"
+import { BookPlus, ChevronDown, ChevronRight, FileCode2, FileJson, FileText, Folder, Pencil, Star, Trash2 } from "lucide-react"
 import { useState, type ReactNode } from "react"
 import type { TreeNode } from "../../lib/file-tree"
 
@@ -7,6 +7,7 @@ export interface FileActions {
   onRename: (from: string, to: string) => void
   onDelete: (path: string) => void
   onSetEntrypoint: (path: string) => void
+  onSaveToLibrary: (path: string) => void
 }
 
 interface FileTreeProps extends FileActions {
@@ -77,6 +78,9 @@ export function FileTree({ nodes, activeFile, entrypoint, ...actions }: FileTree
     const editing = edit?.path === node.path
     const common = (
       <>
+        {node.path !== "manual-edits.json" && (
+          <button type="button" aria-label={`Simpan ${node.path} ke library`} title="Simpan ke library" className={ACTION} onClick={() => actions.onSaveToLibrary(node.path)}><BookPlus size={11} /></button>
+        )}
         <button type="button" aria-label={`Ganti nama ${node.path}`} title="Ganti nama / pindah" className={ACTION} onClick={() => setEdit({ path: node.path, mode: "rename", value: node.path })}><Pencil size={11} /></button>
         {node.path !== entrypoint && (
           <button type="button" aria-label={`Hapus ${node.path}`} title="Hapus" className={ACTION} onClick={() => setEdit({ path: node.path, mode: "delete", value: "" })}><Trash2 size={11} /></button>

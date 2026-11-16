@@ -26,6 +26,11 @@ const BAD_EDIT = `Ganti resistor.\n${editBlock('resistance="999"', 'resistance="
 const GOOD_EDIT = `Resistor diganti 470Ω.\n${editBlock('    <resistor name="R1" resistance="330" footprint="0603" pcbX={0} />', '    <resistor name="R1" resistance="470" footprint="0603" pcbX={0} />')}`
 
 function pickReply(last, body) {
+  if (last.includes("ECHO-LIBRARY")) {
+    const system = body.messages?.find((m) => m.role === "system")?.content ?? ""
+    const line = system.split("\n").find((l) => l.startsWith("- Relay modul"))
+    return line ? `Library terlihat: ${line.slice(2)}` : "Library kosong"
+  }
   if (last.includes("REMEMBER")) {
     return "Siap, saya catat.\n```memory\n- LDO 3V3 terpisah (AP2112K)\n```\n```memory scope=global\n- Pakai part JLCPCB basic\n```"
   }
