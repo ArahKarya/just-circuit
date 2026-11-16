@@ -72,4 +72,4 @@ Rencana awal:
 - [x] Mode agen: AI memakai tools (daftar/baca/cari/tulis/ubah/hapus file, build, cari part JLCPCB); satu versi git per jawaban; langkah tampil di chat.
 - [x] Hasil agen dicek preview browser dan error dikirim balik otomatis; build di server opsional dan di dalam sandbox (sandbox-exec / bwrap, tanpa jaringan, home tidak terbaca, salinan sementara).
 - [x] AI mengusulkan perintah terminal; hanya ditempel ke terminal setelah diklik, Enter ditekan pengguna sendiri.
-- [ ] Panel DRC/ERC yang bisa diklik ke komponen.
+- [x] Panel DRC/ERC (tab "Masalah"): error/peringatan PCB, skematik dan rangkaian dari circuit JSON, saring, klik nama komponen untuk loncat ke deklarasinya di kode, "Minta AI perbaiki". Status build di header membuka panel ini.

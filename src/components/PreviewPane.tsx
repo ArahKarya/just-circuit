@@ -11,8 +11,8 @@ interface PreviewPaneProps {
   files: ProjectFiles
   entrypoint: string
   onStatus: (status: RunStatus) => void
-  /** Latest rendered circuit, used by the layout editor. */
-  onCircuitJson: (circuitJson: unknown[]) => void
+  /** Latest rendered circuit with the code revision it belongs to (layout editor, problems panel). */
+  onCircuitJson: (circuitJson: unknown[], revision: string) => void
   /** Pause after typing before the circuit is rebuilt. */
   debounceMs: number
   defaultTab: PreviewTab
@@ -32,7 +32,7 @@ function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson, debounceM
     },
     [onStatus, revision],
   )
-  const handleRenderFinished = useCallback(({ circuitJson }: { circuitJson: unknown[] }) => onCircuitJson(circuitJson), [onCircuitJson])
+  const handleRenderFinished = useCallback(({ circuitJson }: { circuitJson: unknown[] }) => onCircuitJson(circuitJson, revision), [onCircuitJson, revision])
 
   return (
     <div className="h-full min-h-0 overflow-hidden bg-white">

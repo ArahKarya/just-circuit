@@ -16,6 +16,8 @@ interface CodeEditorProps extends Omit<FileActions, "onOpen"> {
   onCreateFile: (path: string) => boolean
   editorPrefs: Preferences["editor"]
   theme: "dark" | "light"
+  /** Jump to a location from outside (problems panel); a new nonce jumps again. */
+  revealRequest?: { path: string; line: number; column: number; nonce: number } | null
 }
 
 type ExplorerView = "files" | "search"
@@ -40,7 +42,7 @@ function languageOf(path: string): string {
   return "typescript"
 }
 
-export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCreateFile, editorPrefs, theme, ...fileActions }: CodeEditorProps) {
+export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCreateFile, editorPrefs, theme, revealRequest, ...fileActions }: CodeEditorProps) {
   const [showExplorer, setShowExplorer] = useState(true)
   const [view, setView] = useState<ExplorerView>("files")
   const [newFile, setNewFile] = useState<string | null>(null)
@@ -48,6 +50,14 @@ export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCrea
   const editorRef = useRef<MonacoEditor | null>(null)
   const tree = useMemo(() => buildTree(Object.keys(project.files), project.entrypoint), [project.files, project.entrypoint])
   const content = project.files[activeFile] ?? ""
+
+  useEffect(() => {
+    if (!revealRequest) return
+    setReveal({ path: revealRequest.path, line: revealRequest.line, column: revealRequest.column })
+    onSelectFile(revealRequest.path)
+    // Only a new request (nonce) jumps; onSelectFile is stable enough not to matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealRequest?.nonce])
 
   // Jump to a search hit once its file is open in the editor.
   useEffect(() => {

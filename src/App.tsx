@@ -1,10 +1,11 @@
 import type { ManualEditEvent } from "@tscircuit/core"
 import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@tscircuit/runframe/runner"
-import { BookOpen, CircuitBoard, Code2, FolderOpen, History, LogOut, TerminalSquare, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
+import { BookOpen, CircuitBoard, Code2, ListChecks, FolderOpen, History, LogOut, TerminalSquare, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
 import toast from "react-hot-toast"
 import { ChatPanel } from "./components/ChatPanel"
+import { ProblemsPanel } from "./components/ProblemsPanel"
 import { HistoryDialog } from "./components/history/HistoryDialog"
 import { LibraryDialog } from "./components/library/LibraryDialog"
 import { SaveToLibraryDialog } from "./components/library/SaveToLibraryDialog"
@@ -25,14 +26,16 @@ import { useFileActions } from "./hooks/useFileActions"
 import { useProjects } from "./hooks/useProjects"
 import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
+import { buildIssues, extractIssues, locateComponent, type DesignIssue } from "./lib/drc"
 import { notifyChange } from "./lib/live-data"
+import { buildFixRequest } from "./lib/system-prompt"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
 import { TOPICS } from "./lib/repo"
 import { addImportedComponent, withFiles } from "./lib/project-ops"
 import { chatConnection, connectionProblem } from "./lib/providers"
 import type { RunStatus } from "./lib/types"
 
-type LeftTab = "chat" | "code"
+type LeftTab = "chat" | "code" | "problems"
 type DialogName = "settings" | "projects" | "import" | "history" | "library" | null
 
 const STATUS_STYLES: Record<RunStatus["state"], { label: string; className: string }> = {
@@ -65,7 +68,9 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const [dialog, setDialog] = useState<DialogName>(null)
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [runStatus, setRunStatus] = useState<RunStatus>({ state: "idle", errors: [], warnings: [], revision: "" })
-  const [circuitJson, setCircuitJson] = useState<unknown[] | null>(null)
+  const [rendered, setRendered] = useState<{ json: unknown[]; revision: string } | null>(null)
+  const [revealRequest, setRevealRequest] = useState<{ path: string; line: number; column: number; nonce: number } | null>(null)
+  const handleCircuitJson = useCallback((json: unknown[], revision: string) => setRendered({ json, revision }), [])
   const [isLayoutMode, setIsLayoutMode] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
   /** A command the agent proposed and the user chose to run. */
@@ -117,11 +122,41 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   // A rendered circuit belongs to one project; forget it when switching.
   const projectId = project?.id
   useEffect(() => {
-    setCircuitJson(null)
+    setRendered(null)
     setIsLayoutMode(false)
   }, [projectId])
 
+  // A circuit only counts for the code it was rendered from (a failed build leaves an older one behind).
+  const circuitJson = rendered && rendered.revision === runStatus.revision ? rendered.json : null
   const canEditLayout = circuitJson !== null && runStatus.state === "ok"
+  const issues = useMemo<DesignIssue[]>(() => {
+    if (runStatus.state === "running" || runStatus.state === "idle") return []
+    if (circuitJson) return extractIssues(circuitJson)
+    return buildIssues(runStatus.errors)
+  }, [circuitJson, runStatus])
+  const errorCount = issues.filter((i) => i.severity === "error").length
+
+  const revealComponent = useCallback(
+    (name: string): boolean => {
+      const current = working.project
+      if (!current) return false
+      const location = locateComponent(current.files, current.entrypoint, name)
+      if (!location) return false
+      setLeftTab("code")
+      setRevealRequest({ ...location, nonce: Date.now() })
+      return true
+    },
+    [working.project],
+  )
+
+  const askAiToFix = useCallback(
+    (errors: DesignIssue[]) => {
+      setLeftTab("chat")
+      const lines = errors.map((e) => `${e.message}${e.components.length ? ` [${e.components.join(", ")}]` : ""}`)
+      void chat.send(buildFixRequest(lines))
+    },
+    [chat],
+  )
 
   const openLayoutEditor = useCallback(() => {
     if (!project || !circuitJson) return
@@ -170,7 +205,14 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           <FolderOpen size={15} className="text-muted" />
           <span className="truncate">{project.name}</span>
         </button>
-        <span className={`ml-2 text-xs ${status.className}`} title={runStatus.errors.join("\n")}>{status.label}</span>
+        <button
+          type="button"
+          onClick={() => setLeftTab("problems")}
+          className={`ml-2 rounded px-1 text-xs hover:underline ${status.className}`}
+          title={runStatus.errors.join("\n") || "Lihat masalah DRC/ERC"}
+        >
+          {status.label}
+        </button>
         {runStatus.warnings.length > 0 && (
           <span className="ml-2 cursor-help text-xs text-warn" title={runStatus.warnings.join("\n\n")}>
             {runStatus.warnings.length} peringatan
@@ -192,7 +234,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
       <main className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <section className={`flex h-[50%] min-h-0 flex-col border-line bg-panel lg:h-auto lg:shrink-0 lg:border-r ${leftTab === "code" ? "lg:w-[600px]" : "lg:w-[440px]"}`}>
           <div className="flex shrink-0 gap-1 border-b border-line p-1.5" role="tablist">
-            {([["chat", "Chat AI", MessageSquare], ["code", "Kode", Code2]] as const).map(([id, label, Icon]) => (
+            {([["chat", "Chat AI", MessageSquare], ["code", "Kode", Code2], ["problems", "Masalah", ListChecks]] as const).map(([id, label, Icon]) => (
               <button
                 key={id}
                 type="button"
@@ -203,6 +245,9 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
               >
                 <Icon size={15} />
                 {label}
+                {id === "problems" && issues.length > 0 && (
+                  <span className={`rounded-full px-1.5 text-[11px] ${errorCount > 0 ? "bg-danger/15 text-danger" : "bg-raised text-warn"}`}>{issues.length}</span>
+                )}
               </button>
             ))}
           </div>
@@ -220,6 +265,14 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
                   setTerminalCommand({ text, nonce: Date.now() })
                 }}
               />
+            ) : leftTab === "problems" ? (
+              <ProblemsPanel
+                issues={issues}
+                isBuilding={runStatus.state === "running"}
+                onRevealComponent={revealComponent}
+                onAskAiToFix={askAiToFix}
+                canAskAi={!chat.isBusy && !problem}
+              />
             ) : (
               <CodeEditor
                 project={project}
@@ -230,6 +283,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
                 onSaveToLibrary={setLibraryPath}
                 editorPrefs={preferences.editor}
                 theme={theme}
+                revealRequest={revealRequest}
               />
             )}
           </div>
@@ -239,7 +293,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
             files={files}
             entrypoint={project.entrypoint}
             onStatus={setRunStatus}
-            onCircuitJson={setCircuitJson}
+            onCircuitJson={handleCircuitJson}
             debounceMs={preferences.preview.debounceMs}
             defaultTab={preferences.preview.defaultTab}
           />
