@@ -10,7 +10,13 @@ const entrypoint = z.string().max(300)
 const workspaceId = z.string().max(100)
 const createSchema = z.object({ name, entrypoint, files: fileMap, workspaceId: workspaceId.optional() })
 const moveSchema = z.object({ workspaceId })
-const updateSchema = z.object({ name: name.optional(), entrypoint: entrypoint.optional(), files: fileMap.optional() })
+const updateSchema = z.object({
+  name: name.optional(),
+  entrypoint: entrypoint.optional(),
+  files: fileMap.optional(),
+  commitMessage: z.string().trim().min(1).max(200).optional(),
+})
+const versionSchema = z.object({ message: z.string().trim().min(1, "Isi keterangan versi").max(200) })
 
 export const messageSchema = z.object({
   id: z.string().min(1).max(100),
@@ -56,6 +62,17 @@ export function projectsRouter(store: ProjectStore): Router {
     await store.remove(String(req.params.id))
     sendData(res, null)
   }))
+
+  r.get("/:id/versions", handle(async (req, res) => sendData(res, await store.versions(String(req.params.id)))))
+
+  r.post("/:id/versions", handle(async (req, res) => {
+    const body = parseBody(versionSchema, req, res)
+    if (body) sendData(res, { sha: await store.saveVersion(String(req.params.id), body.message) }, 201)
+  }))
+
+  r.get("/:id/versions/:sha/diff", handle(async (req, res) => sendData(res, await store.diffOf(String(req.params.id), String(req.params.sha)))))
+
+  r.post("/:id/versions/:sha/restore", handle(async (req, res) => sendData(res, await store.restoreVersion(String(req.params.id), String(req.params.sha)))))
 
   r.get("/:id/messages", handle(async (req, res) => sendData(res, await store.messages(String(req.params.id)))))
 

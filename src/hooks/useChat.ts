@@ -11,6 +11,14 @@ import type { ChatMessage, Project, RunStatus } from "../lib/types"
 
 const REASONING_TAIL = 600
 const NO_MESSAGES: ChatMessage[] = []
+const VERSION_SUMMARY_CHARS = 72
+
+/** Version message for an AI change: the request it answered, shortened to one line. */
+function versionMessage(request: string, isAutoFix: boolean): string {
+  if (isAutoFix) return "AI: perbaiki error"
+  const line = request.trim().split("\n")[0].replace(/\s+/g, " ")
+  return `AI: ${line.length > VERSION_SUMMARY_CHARS ? `${line.slice(0, VERSION_SUMMARY_CHARS)}…` : line}`
+}
 
 interface PendingEditFix {
   projectId: string
@@ -20,7 +28,8 @@ interface PendingEditFix {
 interface UseChatOptions {
   project: Project | undefined
   runStatus: RunStatus
-  onApplyProject: (project: Project) => Promise<void>
+  /** Applies AI changes to the open project; the message records a version. */
+  onApplyProject: (project: Project, commitMessage?: string) => Promise<void>
 }
 
 export interface ChatState {
@@ -61,14 +70,14 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
 
   /** Saves AI changes to the project they were requested for, even if the user switched away. */
   const applyToProject = useCallback(
-    async (projectIdToUpdate: string, changes: Record<string, string>): Promise<{ previous: Project; next: Project; isActive: boolean } | null> => {
+    async (projectIdToUpdate: string, changes: Record<string, string>, commitMessage: string): Promise<{ previous: Project; next: Project; isActive: boolean } | null> => {
       const active = projectRef.current
       const isActive = active?.id === projectIdToUpdate
       const previous = isActive ? active : await projectsRepo.get(projectIdToUpdate).catch(() => undefined)
       if (!previous) return null
       const next = withFiles(previous, changes)
-      if (isActive) await onApplyProject(next)
-      else await projectsRepo.save(next)
+      if (isActive) await onApplyProject(next, commitMessage)
+      else await projectsRepo.save(next, commitMessage)
       return { previous, next, isActive }
     },
     [onApplyProject],
@@ -116,7 +125,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         const { changes, failures } = changesFromReply(result.text, current.files, current.entrypoint)
         const paths = Object.keys(changes)
         const note = failures.length > 0 ? `\n\n(Edit gagal diterapkan:\n${failures.map((f) => `- ${f}`).join("\n")})` : ""
-        const applied = paths.length > 0 ? await applyToProject(current.id, changes) : null
+        const applied = paths.length > 0 ? await applyToProject(current.id, changes, versionMessage(text, isAutoFix)) : null
         if (failures.length > 0) setEditFailures({ projectId: current.id, failures })
         if (!applied) {
           if (failures.length === 0) setAutoFixRemaining(0)
@@ -193,7 +202,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
       if (!current || !message.previousFiles || message.projectId !== current.id) return
       setAutoFixRemaining(0)
       expectedRevision.current = null
-      await onApplyProject({ ...current, files: message.previousFiles, updatedAt: Date.now() })
+      await onApplyProject({ ...current, files: message.previousFiles, updatedAt: Date.now() }, "Batalkan perubahan AI")
       await messagesRepo.update(current.id, message.id, { previousFiles: null, appliedFiles: [] })
     },
     [onApplyProject],

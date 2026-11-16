@@ -1,10 +1,11 @@
 import type { ManualEditEvent } from "@tscircuit/core"
 import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@tscircuit/runframe/runner"
-import { CircuitBoard, Code2, FolderOpen, LogOut, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
+import { CircuitBoard, Code2, FolderOpen, History, LogOut, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
 import toast from "react-hot-toast"
 import { ChatPanel } from "./components/ChatPanel"
+import { HistoryDialog } from "./components/history/HistoryDialog"
 import { LoginScreen } from "./components/LoginScreen"
 import { LayoutEditor } from "./components/LayoutEditor"
 import { CodeEditor } from "./components/CodeEditor"
@@ -25,7 +26,7 @@ import { activeConnection, connectionProblem } from "./lib/providers"
 import type { RunStatus } from "./lib/types"
 
 type LeftTab = "chat" | "code"
-type DialogName = "settings" | "projects" | "import" | null
+type DialogName = "settings" | "projects" | "import" | "history" | null
 
 const STATUS_STYLES: Record<RunStatus["state"], { label: string; className: string }> = {
   idle: { label: "Siap", className: "text-muted" },
@@ -73,7 +74,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
     async ({ result, tsx }: JlcpcbComponentTsxLoadedPayload) => {
       if (!project) return
       const imported = addImportedComponent(project, result.component.partNumber, tsx)
-      await working.apply(imported.project)
+      await working.apply(imported.project, `Impor part ${result.component.partNumber}`)
       setDialog(null)
       setLeftTab("code")
       setActiveFile(project.entrypoint)
@@ -152,6 +153,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           <Button onClick={openLayoutEditor} disabled={!canEditLayout || isLayoutMode} title={canEditLayout ? "Seret komponen di PCB" : "Butuh build yang berhasil"}>
             <Move size={15} />Atur posisi
           </Button>
+          <Button onClick={() => setDialog("history")}><History size={15} />Riwayat</Button>
           <Button onClick={() => setDialog("import")}><PackagePlus size={15} />Impor part JLCPCB</Button>
           <IconButton label="Pengaturan AI" onClick={() => setDialog("settings")}><Settings size={17} /></IconButton>
           {onLogout && <IconButton label="Keluar" onClick={onLogout}><LogOut size={16} /></IconButton>}
@@ -206,6 +208,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
 
       {dialog === "settings" && <SettingsDialog settings={ai.settings} onSave={ai.save} onClose={closeDialog} />}
       {dialog === "projects" && <ProjectsDialog projects={projects} onClose={closeDialog} />}
+      {dialog === "history" && <HistoryDialog projectId={project.id} flush={working.flush} onClose={closeDialog} />}
       <ImportComponentDialog2
         isOpen={dialog === "import"}
         onClose={closeDialog}

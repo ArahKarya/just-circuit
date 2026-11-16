@@ -12,6 +12,7 @@ Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langs
   - Google Gemini native
 - **Atur posisi (drag & drop di PCB)**: tombol "Atur posisi" membuka PCB yang bisa diseret. Komponen yang posisinya sudah ditulis di kode (`pcbX`/`pcbY`) diperbarui langsung di kode; komponen lain disimpan ke `manual-edits.json` (format resmi tscircuit, otomatis di-import ke `<board manualEdits={...}>`). Hapus tab `manual-edits.json` untuk mereset posisi manual.
 - **Proyek disimpan di server**: setiap proyek adalah folder biasa di `~/cds-data/workspaces/default/<id-proyek>/` yang bisa langsung dibuka dengan `tsci dev`. Riwayat chat ada di `.cds/chat.json` di folder yang sama. Buat, ganti nama, duplikat, hapus (dipindah ke `~/cds-data/trash/`), unduh ZIP.
+- **Riwayat versi**: setiap proyek adalah repo git. Perubahan dari AI, batal (undo), dan impor part otomatis tercatat sebagai versi; tombol **Riwayat** menampilkan diff tiap versi, menyimpan versi manual, dan mengembalikan versi lama (isi sekarang disimpan dulu, jadi tidak ada yang hilang). Butuh `git` di server.
 - **Login**: satu pengguna, password di-hash scrypt (`pnpm set-password`). Tanpa password, server hanya mau berjalan di 127.0.0.1.
 - **Pindah dari versi lama**: proyek, chat, dan pengaturan AI yang dulu tersimpan di browser (IndexedDB) otomatis dipindahkan ke server saat aplikasi pertama kali dibuka. Salinan di browser tidak dihapus.
 - **Impor part JLCPCB**: cari part (mis. `C46749`), lalu komponen TSX-nya ditambahkan ke `imports/` dan otomatis di-import ke file utama.

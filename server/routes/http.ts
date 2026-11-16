@@ -2,6 +2,7 @@ import type { NextFunction, Request, RequestHandler, Response } from "express"
 import type { ZodType } from "zod"
 import { InvalidPathError } from "../storage/project-files.js"
 import { ConflictError, NotFoundError } from "../storage/errors.js"
+import { HistoryUnavailableError } from "../storage/history.js"
 
 export function sendError(res: Response, status: number, message: string): void {
   res.status(status).json({ success: false, error: message })
@@ -26,6 +27,7 @@ export function handle(fn: (req: Request, res: Response) => Promise<void>): Requ
       if (error instanceof NotFoundError) sendError(res, 404, error.message)
       else if (error instanceof InvalidPathError) sendError(res, 400, error.message)
       else if (error instanceof ConflictError) sendError(res, 409, error.message)
+      else if (error instanceof HistoryUnavailableError) sendError(res, 501, error.message)
       else next(error)
     })
   }

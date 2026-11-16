@@ -46,6 +46,14 @@ export interface Workspace {
   projectCount: number
 }
 
+export interface Version {
+  sha: string
+  shortSha: string
+  message: string
+  createdAt: number
+  files: string[]
+}
+
 export interface TrashEntry {
   entryId: string
   projectId: string

@@ -1,11 +1,12 @@
 import { api } from "./api"
 import { notifyChange } from "./live-data"
-import type { AiSettings, ChatMessage, Connection, Project, ProjectFiles, ProjectSummary, TrashEntry, Workspace } from "./types"
+import type { AiSettings, ChatMessage, Connection, Project, ProjectFiles, ProjectSummary, TrashEntry, Version, Workspace } from "./types"
 
 export const TOPICS = {
   projects: "projects",
   project: (id: string) => `project:${id}`,
   messages: (id: string) => `messages:${id}`,
+  versions: (id: string) => `versions:${id}`,
   settings: "settings",
   workspaces: "workspaces",
   trash: "trash",
@@ -28,10 +29,13 @@ export const projectsRepo = {
     notifyChange(TOPICS.projects, TOPICS.workspaces)
     return project
   },
-  /** Saves a full snapshot of the project. Does not notify the project topic: the editor already has it. */
-  async save(project: Project): Promise<Project> {
-    const saved = await api.put<Project>(projectUrl(project.id), { name: project.name, entrypoint: project.entrypoint, files: project.files })
-    notifyChange(TOPICS.projects)
+  /**
+   * Saves a full snapshot of the project; with a commit message it is also recorded as a version.
+   * Does not notify the project topic: the editor already has this content.
+   */
+  async save(project: Project, commitMessage?: string): Promise<Project> {
+    const saved = await api.put<Project>(projectUrl(project.id), { name: project.name, entrypoint: project.entrypoint, files: project.files, commitMessage })
+    notifyChange(TOPICS.projects, ...(commitMessage ? [TOPICS.versions(project.id)] : []))
     return saved
   },
   async rename(id: string, name: string): Promise<void> {
@@ -45,6 +49,21 @@ export const projectsRepo = {
   async move(id: string, workspaceId: string): Promise<void> {
     await api.post<ProjectSummary>(`${projectUrl(id)}/move`, { workspaceId })
     notifyChange(TOPICS.projects, TOPICS.workspaces, TOPICS.project(id))
+  },
+}
+
+export const versionsRepo = {
+  list: (projectId: string) => api.get<Version[]>(`${projectUrl(projectId)}/versions`),
+  diff: (projectId: string, sha: string) => api.get<{ diff: string; truncated: boolean }>(`${projectUrl(projectId)}/versions/${encodeURIComponent(sha)}/diff`),
+  async save(projectId: string, message: string): Promise<string | null> {
+    const { sha } = await api.post<{ sha: string | null }>(`${projectUrl(projectId)}/versions`, { message })
+    notifyChange(TOPICS.versions(projectId))
+    return sha
+  },
+  /** Puts an old version back; the open editor reloads through the project topic. */
+  async restore(projectId: string, sha: string): Promise<void> {
+    await api.post<Project>(`${projectUrl(projectId)}/versions/${encodeURIComponent(sha)}/restore`)
+    notifyChange(TOPICS.versions(projectId), TOPICS.project(projectId), TOPICS.projects)
   },
 }
 

@@ -33,7 +33,7 @@ Status per 16 Nov 2026. Aplikasi hanya versi web. Keputusan: proyek pindah ke pe
 - [x] Template proyek: LED, kosong, Raspberry Pi Pico, catu daya 3.3V AMS1117 (file di `templates/`, dicek dengan `tsci build`).
 - [x] Impor ZIP (folder tsci atau unduhan CDS); `node_modules`, `dist`, file biner dilewati.
 - [x] Cari dan urutkan proyek.
-- [ ] Riwayat versi git per proyek.
+- [x] Riwayat versi git per proyek: versi otomatis tiap perubahan AI / undo / impor part, "Simpan versi" manual, lihat diff, kembalikan versi (edit tangan disimpan dulu sebagai "Perubahan manual").
 - [ ] Pohon file dengan folder + cari isi semua file.
 
 Rencana awal:

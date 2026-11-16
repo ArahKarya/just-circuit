@@ -13,8 +13,10 @@ export interface WorkingProject {
   project: Project | undefined
   /** Local edit (typing); saved after a short pause. */
   edit: (next: Project) => void
-  /** Replace the project and save immediately (AI changes, imports, undo). */
-  apply: (next: Project) => Promise<void>
+  /** Replace the project and save immediately (AI changes, imports, undo); a message records a version. */
+  apply: (next: Project, commitMessage?: string) => Promise<void>
+  /** Saves pending typing right away (before history operations). */
+  flush: () => Promise<void>
   /** Like apply, but derives the next project from the latest in-memory copy. */
   update: (change: (current: Project) => Project) => Promise<void>
 }
@@ -23,20 +25,24 @@ export interface WorkingProject {
  * Keeps an in-memory copy of the active project so typing stays responsive,
  * and writes it back to IndexedDB in the background.
  */
-export function useWorkingProject(stored: Project | undefined, save: (project: Project) => Promise<void>): WorkingProject {
+export function useWorkingProject(stored: Project | undefined, save: (project: Project, commitMessage?: string) => Promise<void>): WorkingProject {
   const [project, setProject] = useState<Project | undefined>(stored)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pending = useRef<Project | null>(null)
   const latest = useRef(project)
   latest.current = project
 
-  const flush = useCallback(() => {
+  const flushNow = useCallback(async () => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
     const next = pending.current
     pending.current = null
-    if (next) save(next).catch((error: unknown) => reportSaveError(error))
+    if (next) await save(next)
   }, [save])
+
+  const flush = useCallback(() => {
+    flushNow().catch((error: unknown) => reportSaveError(error))
+  }, [flushNow])
 
   // Switch to another project: save the old one first.
   useEffect(() => {
@@ -46,9 +52,9 @@ export function useWorkingProject(stored: Project | undefined, save: (project: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stored?.id])
 
-  // Fill in the project once it has loaded or after an external rename.
+  // Take the server copy when it is reloaded (rename, restored version, terminal) unless typing is pending.
   useEffect(() => {
-    if (stored && !pending.current) setProject((current) => (current?.id === stored.id && current.name === stored.name ? current : stored))
+    if (stored && !pending.current) setProject(stored)
   }, [stored])
 
   useEffect(() => flush, [flush])
@@ -64,12 +70,12 @@ export function useWorkingProject(stored: Project | undefined, save: (project: P
   )
 
   const apply = useCallback(
-    async (next: Project) => {
+    async (next: Project, commitMessage?: string) => {
       if (timer.current) clearTimeout(timer.current)
       timer.current = null
       pending.current = null
       setProject(next)
-      await save(next)
+      await save(next, commitMessage)
     },
     [save],
   )
@@ -84,5 +90,5 @@ export function useWorkingProject(stored: Project | undefined, save: (project: P
     [apply],
   )
 
-  return { project, edit, apply, update }
+  return { project, edit, apply, update, flush: flushNow }
 }

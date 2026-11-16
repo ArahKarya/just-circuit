@@ -4,6 +4,7 @@ import path from "node:path"
 import { ConflictError, NotFoundError } from "./errors.js"
 import { createKeyedLock, isDirectory, readOwnJson, writeJsonFile } from "./fs-utils.js"
 import { InvalidPathError, isEditablePath, listEditableFiles, readEditableFiles, syncEditableFiles, type FileMap } from "./project-files.js"
+import { commitAll, ensureRepo, filesAt, HistoryUnavailableError, isDirty, isGitAvailable, listVersions, versionDiff, type Version } from "./history.js"
 import { scaffoldFiles } from "./scaffold.js"
 
 export interface ProjectMeta {
@@ -47,7 +48,11 @@ export interface ProjectPatch {
   name?: string
   entrypoint?: string
   files?: FileMap
+  /** Also record a version with this message (e.g. after an AI change). */
+  commitMessage?: string
 }
+
+const MANUAL_CHANGES = "Perubahan manual"
 
 export { NotFoundError } from "./errors.js"
 
@@ -199,6 +204,8 @@ export function createProjectStore(dataDir: string) {
       await rm(dir, { recursive: true, force: true })
       throw error
     }
+    // History is best effort: a project still works without git.
+    if (await isGitAvailable()) await ensureRepo(dir).catch(() => undefined)
     return { ...meta, files: await readEditableFiles(dir) }
   }
 
@@ -208,6 +215,12 @@ export function createProjectStore(dataDir: string) {
       const meta = await readMeta(dir)
       if (patch.entrypoint !== undefined || patch.files) {
         assertEntrypoint(patch.entrypoint ?? meta.entrypoint, patch.files ?? (await readEditableFiles(dir)))
+      }
+      const record = patch.commitMessage !== undefined && (await isGitAvailable())
+      if (record) {
+        // Keep hand edits (editor, terminal) as their own version so the recorded change stays clean.
+        await ensureRepo(dir)
+        if (await isDirty(dir)) await commitAll(dir, MANUAL_CHANGES)
       }
       if (patch.files) await syncEditableFiles(dir, patch.files)
       if (patch.entrypoint !== undefined && patch.entrypoint !== meta.entrypoint) {
@@ -222,6 +235,44 @@ export function createProjectStore(dataDir: string) {
         updatedAt: Date.now(),
       }
       await writeJsonFile(path.join(dir, META_FILE), next)
+      if (record && patch.commitMessage !== undefined) await commitAll(dir, patch.commitMessage)
+      return { ...next, files: await readEditableFiles(dir) }
+    })
+  }
+
+  async function requireGit(): Promise<void> {
+    if (!(await isGitAvailable())) throw new HistoryUnavailableError("Riwayat versi butuh git di server")
+  }
+
+  /** Runs a history operation on a project folder with version history started. */
+  function withHistory<T>(id: string, task: (dir: string) => Promise<T>): Promise<T> {
+    return withLock(id, async () => {
+      await requireGit()
+      const dir = await locate(id)
+      await ensureRepo(dir)
+      return task(dir)
+    })
+  }
+
+  const versions = (id: string): Promise<Version[]> => withHistory(id, (dir) => listVersions(dir))
+  const diffOf = (id: string, sha: string) => withHistory(id, (dir) => versionDiff(dir, sha))
+
+  /** Saves the current state as a named version; null when nothing changed since the last one. */
+  const saveVersion = (id: string, message: string): Promise<string | null> => withHistory(id, (dir) => commitAll(dir, message))
+
+  /** Puts the files of an earlier version back (recorded as a new version, nothing is lost). */
+  function restoreVersion(id: string, sha: string): Promise<StoredProject> {
+    return withHistory(id, async (dir) => {
+      if (await isDirty(dir)) await commitAll(dir, MANUAL_CHANGES)
+      const files = await filesAt(dir, sha)
+      const meta = await readMeta(dir)
+      const entrypoint = meta.entrypoint in files ? meta.entrypoint : (Object.keys(files).find((f) => f.endsWith(".circuit.tsx")) ?? meta.entrypoint)
+      assertEntrypoint(entrypoint, files)
+      await syncEditableFiles(dir, files)
+      const next: ProjectMeta = { ...meta, entrypoint, updatedAt: Date.now() }
+      await writeJsonFile(path.join(dir, META_FILE), next)
+      const target = (await listVersions(dir)).find((v) => v.sha.startsWith(sha))
+      await commitAll(dir, `Kembali ke versi ${target?.shortSha ?? sha.slice(0, 7)}${target ? `: ${target.message}` : ""}`)
       return { ...next, files: await readEditableFiles(dir) }
     })
   }
@@ -316,7 +367,7 @@ export function createProjectStore(dataDir: string) {
     })
   }
 
-  return { list, get, create, update, remove, move, listTrash, restore, purge, purgeOlderThan, messages, changeMessages, workspacesDir }
+  return { list, get, create, update, remove, move, versions, diffOf, saveVersion, restoreVersion, listTrash, restore, purge, purgeOlderThan, messages, changeMessages, workspacesDir }
 }
 
 export type ProjectStore = ReturnType<typeof createProjectStore>

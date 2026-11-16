@@ -34,8 +34,8 @@ export interface ProjectsState {
   /** Opens a project that was just added on the server (restored, imported) before the list catches up. */
   selectNew: (id: string) => void
   create: (name: string, options?: { templateId?: string; workspaceId?: string }) => Promise<Project>
-  /** Saves the open project; ignored if it was deleted meanwhile. */
-  save: (project: Project) => Promise<void>
+  /** Saves the open project (as a version when a message is given); ignored if it was deleted meanwhile. */
+  save: (project: Project, commitMessage?: string) => Promise<void>
   /** Adds a new project (e.g. a duplicate) and opens it. */
   insert: (input: ProjectInput) => Promise<void>
   rename: (id: string, name: string) => Promise<void>
@@ -80,9 +80,9 @@ export function useProjects(ready: boolean): ProjectsState {
     [selectNew],
   )
 
-  const save = useCallback(async (project: Project) => {
+  const save = useCallback(async (project: Project, commitMessage?: string) => {
     try {
-      await projectsRepo.save(project)
+      await projectsRepo.save(project, commitMessage)
     } catch (error) {
       // The project was deleted while an edit was still pending.
       if (error instanceof ApiError && error.status === 404) return
