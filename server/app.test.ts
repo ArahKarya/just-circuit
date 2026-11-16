@@ -12,6 +12,7 @@ import { hashPassword } from "./security/password"
 import { createSecretBox } from "./security/secret-box"
 import { createProjectStore } from "./storage/projects"
 import { createSettingsStore } from "./storage/settings"
+import { createWorkspaceStore } from "./storage/workspaces"
 
 const PASSWORD = "kata-sandi-uji-123"
 let dataDir: string
@@ -26,7 +27,8 @@ beforeAll(async () => {
     cookieSecure: false,
     loginRateLimitPerMinute: 100,
   })
-  const app = createApp({ auth, projects: createProjectStore(dataDir), settings: createSettingsStore(dataDir, createSecretBox(randomBytes(32))) })
+  const projects = createProjectStore(dataDir)
+  const app = createApp({ auth, projects, settings: createSettingsStore(dataDir, createSecretBox(randomBytes(32))), workspaces: createWorkspaceStore(projects) })
   server = app.listen(0, "127.0.0.1")
   await new Promise((resolve) => server.once("listening", resolve))
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`

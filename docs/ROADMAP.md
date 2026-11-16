@@ -26,7 +26,17 @@ Status per 16 Nov 2026. Aplikasi hanya versi web. Keputusan: proyek pindah ke pe
 - [x] Migrasi otomatis IndexedDB → server (sekali per browser, salinan lama tidak dihapus).
 - [x] E2E memakai server dan folder data sendiri.
 
-### 1B (berikutnya)
+### 1B
+
+- [x] Workspace: buat, ganti nama, hapus (kalau kosong), pindahkan proyek antar workspace (folder ikut pindah di disk).
+- [x] Tempat sampah: daftar, pulihkan ke workspace asal, hapus permanen, kosongkan; otomatis dibersihkan setelah 30 hari.
+- [x] Template proyek: LED, kosong, Raspberry Pi Pico, catu daya 3.3V AMS1117 (file di `templates/`, dicek dengan `tsci build`).
+- [x] Impor ZIP (folder tsci atau unduhan CDS); `node_modules`, `dist`, file biner dilewati.
+- [x] Cari dan urutkan proyek.
+- [ ] Riwayat versi git per proyek.
+- [ ] Pohon file dengan folder + cari isi semua file.
+
+Rencana awal:
 
 - Antarmuka penyimpanan (repository) dengan backend filesystem: `WORKSPACE_DIR/<workspace>/<proyek>/` berisi file tsci (`index.circuit.tsx`, `package.json`, `manual-edits.json`, `.cds/chat.json`).
 - Login satu pengguna (hash password di `.env`, cookie sesi httpOnly, proteksi CSRF), API key disimpan terenkripsi di server.

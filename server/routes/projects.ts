@@ -7,7 +7,9 @@ const fileMap = z.record(z.string().max(300), z.string())
 const name = z.string().trim().min(1, "Nama wajib diisi").max(100)
 const entrypoint = z.string().max(300)
 
-const createSchema = z.object({ name, entrypoint, files: fileMap })
+const workspaceId = z.string().max(100)
+const createSchema = z.object({ name, entrypoint, files: fileMap, workspaceId: workspaceId.optional() })
+const moveSchema = z.object({ workspaceId })
 const updateSchema = z.object({ name: name.optional(), entrypoint: entrypoint.optional(), files: fileMap.optional() })
 
 export const messageSchema = z.object({
@@ -28,7 +30,10 @@ const messagePatchSchema = z.object({
 export function projectsRouter(store: ProjectStore): Router {
   const r = Router()
 
-  r.get("/", handle(async (_req, res) => sendData(res, await store.list())))
+  r.get("/", handle(async (req, res) => {
+    const workspace = typeof req.query.workspace === "string" ? req.query.workspace : undefined
+    sendData(res, await store.list(workspace))
+  }))
 
   r.post("/", handle(async (req, res) => {
     const body = parseBody(createSchema, req, res)
@@ -40,6 +45,11 @@ export function projectsRouter(store: ProjectStore): Router {
   r.put("/:id", handle(async (req, res) => {
     const body = parseBody(updateSchema, req, res)
     if (body) sendData(res, await store.update(String(req.params.id), body))
+  }))
+
+  r.post("/:id/move", handle(async (req, res) => {
+    const body = parseBody(moveSchema, req, res)
+    if (body) sendData(res, await store.move(String(req.params.id), body.workspaceId))
   }))
 
   r.delete("/:id", handle(async (req, res) => {

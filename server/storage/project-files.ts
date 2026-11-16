@@ -1,33 +1,13 @@
 import { lstat, mkdir, readdir, readFile, realpath, rm, rmdir } from "node:fs/promises"
 import path from "node:path"
+import { isEditablePath, MAX_FILE_BYTES, MAX_FILES, SCAFFOLD_FILES, SKIPPED_DIRS } from "../../shared/project-paths.js"
 import { writeFileAtomic } from "./fs-utils.js"
+
+export { isEditablePath, MAX_FILE_BYTES, MAX_FILES, SCAFFOLD_FILES }
 
 export type FileMap = Record<string, string>
 
-/** File types the editor shows and the AI may write. */
-const EDITABLE_EXTENSIONS = new Set([".tsx", ".ts", ".jsx", ".js", ".json", ".md", ".txt", ".csv"])
-/** tsci scaffold files: kept on disk for the CLI and terminal, hidden from the editor and AI. */
-export const SCAFFOLD_FILES = new Set(["package.json", "tscircuit.config.json", "tsconfig.json", "bun.lock", "bun.lockb", "package-lock.json", "pnpm-lock.yaml"])
-const SKIPPED_DIRS = new Set(["node_modules", "dist"])
-/** Never written through the API: tools execute what is inside, or read it as configuration. */
-const FORBIDDEN_SEGMENTS = new Set([...SKIPPED_DIRS, "package.json", "bunfig.toml"])
-const CONFIG_NAME = /^(tscircuit|vite|vitest|bunfig|tsconfig)\.config\.|^tsconfig\./i
-const SEGMENT = /^[\w-][\w.-]*$/
-export const MAX_FILE_BYTES = 1024 * 1024
-export const MAX_FILES = 500
-
 export class InvalidPathError extends Error {}
-
-/** Relative, forward-slash path with no dot-segments or hidden parts, of an editable type. */
-export function isEditablePath(relative: string): boolean {
-  if (relative.length === 0 || relative.length > 300) return false
-  const segments = relative.split("/")
-  return (
-    segments.every((s) => SEGMENT.test(s) && s !== "." && s !== ".." && !FORBIDDEN_SEGMENTS.has(s.toLowerCase())) &&
-    !CONFIG_NAME.test(segments[segments.length - 1]) &&
-    EDITABLE_EXTENSIONS.has(path.extname(relative).toLowerCase())
-  )
-}
 
 /** Resolves a project-relative path, refusing anything that escapes the project folder. */
 export function resolveInside(root: string, relative: string): string {

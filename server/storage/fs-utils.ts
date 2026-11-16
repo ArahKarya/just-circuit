@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto"
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 /** Writes through a temp file + rename so readers never see half a file. */
@@ -42,3 +42,21 @@ export function createKeyedLock() {
     return run
   }
 }
+
+/** Real directory, not a symlink to one. */
+export async function isDirectory(dir: string): Promise<boolean> {
+  try {
+    return (await lstat(dir)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/** Reads a .cds JSON file, refusing symlinks (they could point at settings.json or sessions.json). */
+export async function readOwnJson<T>(file: string, fallback: T): Promise<T> {
+  const info = await lstat(file).catch(() => null)
+  if (!info) return fallback
+  if (!info.isFile()) throw new Error(`Refusing to read ${path.basename(file)}: not a regular file`)
+  return readJsonFile<T>(file, fallback)
+}
+

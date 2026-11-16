@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ApiError } from "../lib/api"
 import { useLiveData } from "../lib/live-data"
-import { createProject } from "../lib/project-ops"
+import { DEFAULT_ENTRYPOINT } from "../lib/project-ops"
+import { DEFAULT_TEMPLATE_ID, findTemplate } from "../lib/templates"
 import { projectsRepo, TOPICS, type ProjectInput } from "../lib/repo"
 import type { Project, ProjectSummary } from "../lib/types"
 
@@ -30,7 +31,9 @@ export interface ProjectsState {
   activeId: string | null
   error: Error | null
   select: (id: string) => void
-  create: (name: string) => Promise<Project>
+  /** Opens a project that was just added on the server (restored, imported) before the list catches up. */
+  selectNew: (id: string) => void
+  create: (name: string, options?: { templateId?: string; workspaceId?: string }) => Promise<Project>
   /** Saves the open project; ignored if it was deleted meanwhile. */
   save: (project: Project) => Promise<void>
   /** Adds a new project (e.g. a duplicate) and opens it. */
@@ -46,20 +49,35 @@ export function useProjects(ready: boolean): ProjectsState {
   const listedActiveId = list.data?.some((p) => p.id === activeId) ? activeId : null
   const active = useLiveData(listedActiveId ? () => projectsRepo.get(listedActiveId) : null, listedActiveId ? [TOPICS.project(listedActiveId)] : [])
   const isSeeding = useRef(false)
+  /** A project just created here: the list may not include it yet, so don't fall back to another one. */
+  const justCreated = useRef<string | null>(null)
 
   const select = useCallback((id: string) => {
     setActiveId(id)
     storeActiveId(id)
   }, [])
 
-  const create = useCallback(
-    async (name: string) => {
-      const { name: projectName, entrypoint, files } = createProject(name)
-      const project = await projectsRepo.create({ name: projectName, entrypoint, files })
-      select(project.id)
-      return project
+  const selectNew = useCallback(
+    (id: string) => {
+      justCreated.current = id
+      select(id)
     },
     [select],
+  )
+
+  const create = useCallback(
+    async (name: string, options: { templateId?: string; workspaceId?: string } = {}) => {
+      const template = findTemplate(options.templateId ?? DEFAULT_TEMPLATE_ID)
+      const project = await projectsRepo.create({
+        name: name.trim() || "Proyek tanpa nama",
+        entrypoint: DEFAULT_ENTRYPOINT,
+        files: template.files,
+        workspaceId: options.workspaceId,
+      })
+      selectNew(project.id)
+      return project
+    },
+    [selectNew],
   )
 
   const save = useCallback(async (project: Project) => {
@@ -75,24 +93,30 @@ export function useProjects(ready: boolean): ProjectsState {
   const insert = useCallback(
     async (input: ProjectInput) => {
       const project = await projectsRepo.create(input)
-      select(project.id)
+      selectNew(project.id)
     },
-    [select],
+    [selectNew],
   )
 
   useEffect(() => {
     const projects = list.data
     if (!projects) return
     if (projects.length === 0) {
+      // Seed once: the list may still read [] for a moment after the first project is created.
       if (!isSeeding.current) {
         isSeeding.current = true
-        void create("Proyek pertama").finally(() => {
+        void create("Proyek pertama").catch(() => {
           isSeeding.current = false
         })
       }
       return
     }
-    if (!projects.some((p) => p.id === activeId)) select(projects[0].id)
+    if (projects.some((p) => p.id === activeId)) {
+      if (justCreated.current === activeId) justCreated.current = null
+      return
+    }
+    if (justCreated.current !== null && justCreated.current === activeId) return
+    select(projects[0].id)
   }, [list.data, activeId, create, select])
 
   return {
@@ -101,6 +125,7 @@ export function useProjects(ready: boolean): ProjectsState {
     activeId: listedActiveId,
     error: list.error ?? active.error,
     select,
+    selectNew,
     create,
     save,
     insert,

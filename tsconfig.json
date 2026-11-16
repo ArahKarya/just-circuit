@@ -36,6 +36,7 @@
     "server",
     "vite.config.ts",
     "vite-plugins",
-    "scripts"
+    "scripts",
+    "shared"
   ]
 }

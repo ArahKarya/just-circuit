@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto"
-import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises"
+import { mkdir, readdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
-import { createKeyedLock, readJsonFile, writeJsonFile } from "./fs-utils.js"
+import { ConflictError, NotFoundError } from "./errors.js"
+import { createKeyedLock, isDirectory, readOwnJson, writeJsonFile } from "./fs-utils.js"
 import { InvalidPathError, isEditablePath, listEditableFiles, readEditableFiles, syncEditableFiles, type FileMap } from "./project-files.js"
 import { scaffoldFiles } from "./scaffold.js"
 
@@ -48,11 +49,30 @@ export interface ProjectPatch {
   files?: FileMap
 }
 
-export class NotFoundError extends Error {}
+export { NotFoundError } from "./errors.js"
 
 export const DEFAULT_WORKSPACE = "default"
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,80}$/
 const META_FILE = path.join(".cds", "project.json")
+/** Written into a project when it is moved to the trash, so it can go back where it came from. */
+const TRASH_INFO_FILE = path.join(".cds", "trash.json")
+const TRASH_ENTRY = /^(\d{10,16})-([a-z0-9][a-z0-9-]{0,120})$/
+/** Trash entries older than this are removed when the server starts. */
+export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+
+export interface TrashEntry {
+  entryId: string
+  projectId: string
+  name: string
+  workspaceId: string
+  deletedAt: number
+  fileCount: number
+}
+
+interface TrashInfo {
+  workspaceId: string
+  deletedAt: number
+}
 const CHAT_FILE = path.join(".cds", "chat.json")
 
 export function isValidId(id: string): boolean {
@@ -72,23 +92,6 @@ function slugify(name: string): string {
 /** Folder name = id: readable in the terminal, unique thanks to a short random suffix. */
 export function newProjectId(name: string): string {
   return `${slugify(name)}-${randomBytes(3).toString("hex")}`
-}
-
-/** Real directory, not a symlink to one. */
-async function isDirectory(dir: string): Promise<boolean> {
-  try {
-    return (await lstat(dir)).isDirectory()
-  } catch {
-    return false
-  }
-}
-
-/** Reads a .cds JSON file, refusing symlinks (they could point at settings.json or sessions.json). */
-async function readOwnJson<T>(file: string, fallback: T): Promise<T> {
-  const info = await lstat(file).catch(() => null)
-  if (!info) return fallback
-  if (!info.isFile()) throw new NotFoundError("Data proyek rusak")
-  return readJsonFile<T>(file, fallback)
 }
 
 /** Most recent chat messages kept per project. */
@@ -128,7 +131,7 @@ export function createProjectStore(dataDir: string) {
   }
 
   async function readMeta(dir: string): Promise<ProjectMeta> {
-    const meta = await readOwnJson<ProjectMeta | null>(path.join(dir, META_FILE), null)
+    const meta = await readOwnJson<ProjectMeta | null>(path.join(dir, META_FILE), null).catch(() => null)
     if (!meta) throw new NotFoundError("Proyek tidak ditemukan")
     return { ...meta, id: path.basename(dir), workspaceId: path.basename(path.dirname(dir)) }
   }
@@ -223,13 +226,81 @@ export function createProjectStore(dataDir: string) {
     })
   }
 
-  /** Moves the project folder to dataDir/trash (restorable by hand until Phase 1B adds a UI). */
+  /** Moves the project folder to dataDir/trash/<deletedAt>-<id>. */
   function remove(id: string): Promise<void> {
     return withLock(id, async () => {
       const dir = await locate(id)
+      const deletedAt = Date.now()
+      const info: TrashInfo = { workspaceId: path.basename(path.dirname(dir)), deletedAt }
+      await writeJsonFile(path.join(dir, TRASH_INFO_FILE), info)
       await mkdir(trashDir, { recursive: true })
-      await rename(dir, path.join(trashDir, `${Date.now()}-${path.basename(path.dirname(dir))}-${id}`))
+      await rename(dir, path.join(trashDir, `${deletedAt}-${id}`))
     })
+  }
+
+  /** Moves a project to another workspace (the folder moves on disk too). */
+  function move(id: string, workspaceId: string): Promise<ProjectMeta> {
+    return withLock(id, async () => {
+      if (!isValidId(workspaceId) || !(await isDirectory(path.join(workspacesDir, workspaceId)))) throw new NotFoundError("Workspace tidak ditemukan")
+      const dir = await locate(id)
+      const target = path.join(workspacesDir, workspaceId, id)
+      if (target !== dir) await rename(dir, target)
+      return readMeta(target)
+    })
+  }
+
+  function trashEntryDir(entryId: string): string {
+    if (!TRASH_ENTRY.test(entryId)) throw new NotFoundError("Item tempat sampah tidak ditemukan")
+    return path.join(trashDir, entryId)
+  }
+
+  async function listTrash(): Promise<TrashEntry[]> {
+    const entries = await readdir(trashDir, { withFileTypes: true }).catch(() => [])
+    const items: TrashEntry[] = []
+    for (const entry of entries) {
+      const match = TRASH_ENTRY.exec(entry.name)
+      if (!match || !entry.isDirectory()) continue
+      const dir = path.join(trashDir, entry.name)
+      const meta = await readOwnJson<ProjectMeta | null>(path.join(dir, META_FILE), null).catch(() => null)
+      if (!meta) continue
+      const info = await readOwnJson<TrashInfo | null>(path.join(dir, TRASH_INFO_FILE), null).catch(() => null)
+      items.push({
+        entryId: entry.name,
+        projectId: match[2],
+        name: meta.name,
+        workspaceId: info?.workspaceId ?? DEFAULT_WORKSPACE,
+        deletedAt: info?.deletedAt ?? Number(match[1]),
+        fileCount: (await listEditableFiles(dir)).length,
+      })
+    }
+    return items.sort((a, b) => b.deletedAt - a.deletedAt)
+  }
+
+  /** Puts a trashed project back into its workspace (or the default one if that is gone). */
+  async function restore(entryId: string): Promise<ProjectMeta> {
+    const dir = trashEntryDir(entryId)
+    if (!(await isDirectory(dir))) throw new NotFoundError("Item tempat sampah tidak ditemukan")
+    const projectId = TRASH_ENTRY.exec(entryId)?.[2] ?? ""
+    const info = await readOwnJson<TrashInfo | null>(path.join(dir, TRASH_INFO_FILE), null).catch(() => null)
+    const wanted = info?.workspaceId && isValidId(info.workspaceId) ? info.workspaceId : DEFAULT_WORKSPACE
+    const workspaceId = (await isDirectory(path.join(workspacesDir, wanted))) ? wanted : DEFAULT_WORKSPACE
+    await mkdir(path.join(workspacesDir, workspaceId), { recursive: true })
+    const target = path.join(workspacesDir, workspaceId, projectId)
+    if (await isDirectory(target)) throw new ConflictError("Proyek dengan id yang sama sudah ada")
+    await rename(dir, target)
+    await rm(path.join(target, TRASH_INFO_FILE), { force: true })
+    return readMeta(target)
+  }
+
+  async function purge(entryId: string): Promise<void> {
+    await rm(trashEntryDir(entryId), { recursive: true, force: true })
+  }
+
+  /** Permanently removes trash entries deleted before `cutoff`; returns how many. */
+  async function purgeOlderThan(cutoff: number): Promise<number> {
+    const old = (await listTrash()).filter((entry) => entry.deletedAt < cutoff)
+    for (const entry of old) await purge(entry.entryId)
+    return old.length
   }
 
   async function messages(id: string): Promise<ChatMessageRecord[]> {
@@ -245,7 +316,7 @@ export function createProjectStore(dataDir: string) {
     })
   }
 
-  return { list, get, create, update, remove, messages, changeMessages, workspacesDir }
+  return { list, get, create, update, remove, move, listTrash, restore, purge, purgeOlderThan, messages, changeMessages, workspacesDir }
 }
 
 export type ProjectStore = ReturnType<typeof createProjectStore>

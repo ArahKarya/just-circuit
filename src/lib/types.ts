@@ -39,6 +39,22 @@ export interface ProjectSummary {
   updatedAt: number
 }
 
+export interface Workspace {
+  id: string
+  name: string
+  createdAt: number
+  projectCount: number
+}
+
+export interface TrashEntry {
+  entryId: string
+  projectId: string
+  name: string
+  workspaceId: string
+  deletedAt: number
+  fileCount: number
+}
+
 export interface Project {
   id: string
   name: string

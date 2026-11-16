@@ -6,8 +6,9 @@ import { config } from "./config.js"
 import { logger } from "./logger.js"
 import { isPasswordHash } from "./security/password.js"
 import { createSecretBox, loadSecretKey } from "./security/secret-box.js"
-import { createProjectStore } from "./storage/projects.js"
+import { createProjectStore, TRASH_RETENTION_MS } from "./storage/projects.js"
 import { createSettingsStore } from "./storage/settings.js"
+import { createWorkspaceStore } from "./storage/workspaces.js"
 
 function checkAuthConfig(): void {
   if (config.passwordHash && !isPasswordHash(config.passwordHash)) {
@@ -39,7 +40,10 @@ const auth = createAuth({
   cookieSecure: config.cookieSecure,
   loginRateLimitPerMinute: config.loginRateLimitPerMinute,
 })
-const app = createApp({ auth, projects: createProjectStore(config.dataDir), settings: createSettingsStore(config.dataDir, box) })
+const projects = createProjectStore(config.dataDir)
+const purged = await projects.purgeOlderThan(Date.now() - TRASH_RETENTION_MS)
+if (purged > 0) logger.info("trash emptied", { purged })
+const app = createApp({ auth, projects, settings: createSettingsStore(config.dataDir, box), workspaces: createWorkspaceStore(projects) })
 
 const server = app.listen(config.port, config.host, () => {
   logger.info("CDS API listening", {

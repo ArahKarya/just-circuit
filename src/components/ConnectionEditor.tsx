@@ -3,7 +3,7 @@ import { useState } from "react"
 import { fetchModels } from "../lib/llm-client"
 import { KIND_LABELS, supportsTemperature } from "../lib/providers"
 import type { Connection, ProviderKind, TemperatureMode } from "../lib/types"
-import { Button, Field } from "./ui"
+import { Button, Field, SELECT_CLASS } from "./ui"
 
 interface ConnectionEditorProps {
   connection: Connection
@@ -34,8 +34,6 @@ function temperatureHint(connection: Connection): string {
     ? "Dikirim untuk model ini."
     : "Tidak dikirim: model ini (Claude 5, GPT-5, seri o) menolak temperature."
 }
-
-const SELECT_CLASS = "h-9 w-full rounded-md border border-line bg-surface px-2 text-sm text-ink focus:border-accent focus:outline-none"
 
 export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps) {
   const [showKey, setShowKey] = useState(false)

@@ -1,5 +1,5 @@
 import { X } from "lucide-react"
-import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react"
+import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react"
 
 type ButtonVariant = "primary" | "ghost" | "danger"
 
@@ -80,7 +80,7 @@ export function Modal({ title, onClose, children, footer, wide }: ModalProps) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`flex max-h-[90vh] w-full flex-col rounded-xl border border-line bg-panel shadow-2xl ${wide ? "max-w-3xl" : "max-w-lg"}`}
+        className={`flex max-h-[90vh] w-full flex-col rounded-xl border border-line bg-panel shadow-2xl ${wide ? "max-w-4xl" : "max-w-lg"}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-line px-5 py-3">
@@ -93,5 +93,26 @@ export function Modal({ title, onClose, children, footer, wide }: ModalProps) {
         {footer && <footer className="flex justify-end gap-2 border-t border-line px-5 py-3">{footer}</footer>}
       </div>
     </div>
+  )
+}
+
+export const SELECT_CLASS = "h-9 w-full rounded-md border border-line bg-surface px-2 text-sm text-ink focus:border-accent focus:outline-none"
+
+interface SelectFieldProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  label: string
+  options: readonly { value: string; label: string }[]
+}
+
+export function SelectField({ label, options, id, className = "", ...props }: SelectFieldProps) {
+  const selectId = id ?? `select-${label.replace(/\W+/g, "-").toLowerCase()}`
+  return (
+    <label htmlFor={selectId} className="block space-y-1">
+      <span className="text-xs font-medium text-muted">{label}</span>
+      <select id={selectId} className={`${SELECT_CLASS} ${className}`} {...props}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+    </label>
   )
 }
