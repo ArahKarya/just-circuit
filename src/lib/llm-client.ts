@@ -1,3 +1,4 @@
+import { UNAUTHORIZED_EVENT } from "./api"
 import type { Connection } from "./types"
 
 export interface ChatTurn {
@@ -30,11 +31,15 @@ export interface ChatResult {
   truncated: boolean
 }
 
+const JSON_HEADERS = { "Content-Type": "application/json", "X-CDS-Request": "1" }
+
+/** apiKey is only sent when typed in the (unsaved) form; otherwise the server uses the stored key. */
 function toServerConnection(connection: Connection) {
-  return { kind: connection.kind, baseUrl: connection.baseUrl, apiKey: connection.apiKey, model: connection.model }
+  return { kind: connection.kind, baseUrl: connection.baseUrl, apiKey: connection.clearApiKey ? "" : connection.apiKey, model: connection.model }
 }
 
 async function readErrorMessage(response: Response): Promise<string> {
+  if (response.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
   try {
     const body = (await response.json()) as { error?: string }
     return body.error ?? `HTTP ${response.status}`
@@ -56,10 +61,10 @@ function parseLine(line: string): StreamEvent | null {
 export async function streamChat(request: ChatRequest): Promise<ChatResult> {
   const response = await fetch("/api/llm/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: JSON_HEADERS,
     signal: request.signal,
     body: JSON.stringify({
-      connection: toServerConnection(request.connection),
+      connectionId: request.connection.id,
       system: request.system,
       messages: request.messages,
       temperature: request.temperature,
@@ -106,8 +111,8 @@ export async function streamChat(request: ChatRequest): Promise<ChatResult> {
 export async function fetchModels(connection: Connection): Promise<string[]> {
   const response = await fetch("/api/llm/models", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ connection: toServerConnection(connection) }),
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ connection: toServerConnection(connection), connectionId: connection.id }),
   })
   if (!response.ok) throw new Error(await readErrorMessage(response))
   const body = (await response.json()) as { data?: string[] }

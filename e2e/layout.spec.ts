@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./fixtures"
 
 // The PCB viewer needs WebGPU; SwiftShader provides a software adapter in headless Chromium.
 test.use({ launchOptions: { args: ["--enable-unsafe-webgpu", "--use-webgpu-adapter=swiftshader", "--use-angle=swiftshader"] } })

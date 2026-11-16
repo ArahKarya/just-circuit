@@ -7,6 +7,7 @@ import { createIdleTimer } from "../llm/idle-timer.js"
 import { UrlGuardError } from "../net/url-guard.js"
 import { createLanguageModel, listModels } from "../llm/providers.js"
 import { chatRequestSchema, modelsRequestSchema } from "../llm/schema.js"
+import type { SettingsStore } from "../storage/settings.js"
 
 /** One NDJSON line streamed to the browser. */
 export type ChatStreamEvent =
@@ -24,17 +25,26 @@ function sendError(res: Response, status: number, message: string): void {
   res.status(status).json({ success: false, error: message })
 }
 
-async function handleChat(req: Request, res: Response): Promise<void> {
+async function handleChat(settings: SettingsStore, req: Request, res: Response): Promise<void> {
   const parsed = chatRequestSchema.safeParse(req.body)
   if (!parsed.success) {
     sendError(res, 400, parsed.error.issues.map((issue) => issue.message).join("; "))
     return
   }
   const body = parsed.data
+  const connection = await settings.resolve(body.connectionId)
+  if (!connection) {
+    sendError(res, 400, "Koneksi AI tidak ditemukan. Simpan pengaturan dulu.")
+    return
+  }
+  if (!connection.model) {
+    sendError(res, 400, "Model wajib diisi")
+    return
+  }
 
   let model
   try {
-    model = await createLanguageModel(body.connection)
+    model = await createLanguageModel(connection)
   } catch (error) {
     sendError(res, error instanceof UrlGuardError ? 400 : 500, errorMessage(error))
     return
@@ -56,7 +66,7 @@ async function handleChat(req: Request, res: Response): Promise<void> {
     upstream.abort()
   }, config.upstreamTimeoutMs)
   const startedAt = Date.now()
-  const logContext = { kind: body.connection.kind, model: body.connection.model }
+  const logContext = { kind: connection.kind, model: connection.model }
   res.on("close", () => clientGone.abort())
   res.status(200)
   res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8")
@@ -123,23 +133,26 @@ function timeoutMessage(reason: "first" | "idle" | "total" | null): string | nul
   return null
 }
 
-async function handleModels(req: Request, res: Response): Promise<void> {
+async function handleModels(settings: SettingsStore, req: Request, res: Response): Promise<void> {
   const parsed = modelsRequestSchema.safeParse(req.body)
   if (!parsed.success) {
     sendError(res, 400, parsed.error.issues.map((issue) => issue.message).join("; "))
     return
   }
   try {
-    const models = await listModels(parsed.data.connection)
+    const { connection, connectionId } = parsed.data
+    const saved = !connection.apiKey && connectionId ? await settings.resolve(connectionId) : null
+    // A stored key is only ever sent to the provider it was saved for, never to a URL from this request.
+    const models = await listModels(saved ? { ...saved, model: connection.model } : connection)
     res.json({ success: true, data: models })
   } catch (error) {
     sendError(res, error instanceof UrlGuardError ? 400 : 502, errorMessage(error))
   }
 }
 
-export function llmRouter(): Router {
+export function llmRouter(settings: SettingsStore): Router {
   const router = Router()
-  router.post("/chat", handleChat)
-  router.post("/models", handleModels)
+  router.post("/chat", (req, res, next) => handleChat(settings, req, res).catch(next))
+  router.post("/models", (req, res, next) => handleModels(settings, req, res).catch(next))
   return router
 }

@@ -124,7 +124,7 @@ export function connectionProblem(connection: Connection | undefined): string | 
   if (connection.kind === "openai-compatible" && !connection.baseUrl.trim()) {
     return `Base URL untuk "${connection.name}" belum diisi.`
   }
-  if (connection.kind !== "openai-compatible" && !connection.apiKey.trim()) {
+  if (connection.kind !== "openai-compatible" && !connection.apiKey.trim() && !connection.hasApiKey) {
     return `API key untuk "${connection.name}" belum diisi.`
   }
   return null

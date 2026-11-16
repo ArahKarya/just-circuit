@@ -20,6 +20,7 @@ export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProp
   const [selectedId, setSelectedId] = useState<string | null>(settings.activeConnectionId ?? settings.connections[0]?.id ?? null)
   const [presetId, setPresetId] = useState(PROVIDER_PRESETS[0].id)
   const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const selected = draft.connections.find((c) => c.id === selectedId)
   const preset = PROVIDER_PRESETS.find((p) => p.id === presetId) ?? PROVIDER_PRESETS[0]
 
@@ -48,9 +49,12 @@ export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProp
 
   const save = async () => {
     setIsSaving(true)
+    setSaveError(null)
     try {
       await onSave(draft)
       onClose()
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Gagal menyimpan pengaturan")
     } finally {
       setIsSaving(false)
     }
@@ -63,6 +67,7 @@ export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProp
       onClose={onClose}
       footer={
         <>
+          {saveError && <span role="alert" className="mr-auto text-xs text-danger">{saveError}</span>}
           <Button onClick={onClose}>Batal</Button>
           <Button variant="primary" onClick={() => void save()} disabled={isSaving}>Simpan</Button>
         </>
@@ -71,7 +76,7 @@ export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProp
       <div className="flex flex-col gap-5">
         <p className="flex gap-2 rounded-md border border-line bg-raised p-3 text-xs text-muted">
           <ShieldAlert size={16} className="shrink-0 text-accent" />
-          API key disimpan di browser ini (IndexedDB) dan hanya dikirim ke server CDS untuk diteruskan ke provider. Jangan pakai di komputer orang lain.
+          API key disimpan terenkripsi di server CDS dan tidak pernah dikirim balik ke browser. Kolom key kosong berarti key yang tersimpan tetap dipakai.
         </p>
 
         <section className="space-y-2">

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Page } from "./fixtures"
 
 async function addMockConnection(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Pengaturan AI" }).click()

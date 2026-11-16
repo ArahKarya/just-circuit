@@ -18,6 +18,16 @@ Status per 16 Nov 2026. Aplikasi hanya versi web. Keputusan: proyek pindah ke pe
 
 ## Fase 1 — Workspace di server
 
+### 1A (selesai 16 Nov 2026)
+
+- [x] Penyimpanan filesystem `CDS_DATA_DIR/workspaces/<workspace>/<proyek>/` (file tsci + `.cds/project.json` + `.cds/chat.json`), hapus = pindah ke `trash/`.
+- [x] Login satu pengguna (scrypt, `pnpm set-password`), sesi persisten, cookie httpOnly SameSite=Strict, header CSRF.
+- [x] API key terenkripsi AES-256-GCM di server, tidak pernah dikirim ke browser.
+- [x] Migrasi otomatis IndexedDB → server (sekali per browser, salinan lama tidak dihapus).
+- [x] E2E memakai server dan folder data sendiri.
+
+### 1B (berikutnya)
+
 - Antarmuka penyimpanan (repository) dengan backend filesystem: `WORKSPACE_DIR/<workspace>/<proyek>/` berisi file tsci (`index.circuit.tsx`, `package.json`, `manual-edits.json`, `.cds/chat.json`).
 - Login satu pengguna (hash password di `.env`, cookie sesi httpOnly, proteksi CSRF), API key disimpan terenkripsi di server.
 - Migrasi sekali jalan IndexedDB → server.

@@ -22,6 +22,12 @@ const TEMPERATURE_LABELS: Record<TemperatureMode, string> = {
   omit: "Jangan kirim",
 }
 
+function apiKeyPlaceholder(connection: Connection): string {
+  if (connection.clearApiKey) return "key akan dihapus saat disimpan"
+  if (connection.hasApiKey) return "•••••••• tersimpan (ketik untuk mengganti)"
+  return connection.kind === "openai-compatible" ? "kosongkan kalau tidak perlu (mis. Ollama)" : "wajib"
+}
+
 function temperatureHint(connection: Connection): string {
   if ((connection.temperatureMode ?? "auto") !== "auto") return "Pengaturan manual untuk koneksi ini."
   return supportsTemperature(connection.model)
@@ -80,10 +86,13 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
             type={showKey ? "text" : "password"}
             autoComplete="off"
             value={connection.apiKey}
-            placeholder={connection.kind === "openai-compatible" ? "kosongkan kalau tidak perlu (mis. Ollama)" : "wajib"}
-            onChange={(e) => update({ apiKey: e.target.value })}
+            placeholder={apiKeyPlaceholder(connection)}
+            onChange={(e) => update({ apiKey: e.target.value, clearApiKey: false })}
           />
         </div>
+        {connection.hasApiKey && !connection.clearApiKey && (
+          <Button onClick={() => update({ apiKey: "", clearApiKey: true })}>Hapus key</Button>
+        )}
         <Button aria-label={showKey ? "Sembunyikan key" : "Tampilkan key"} onClick={() => setShowKey((v) => !v)}>
           {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
         </Button>

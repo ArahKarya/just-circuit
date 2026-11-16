@@ -1,8 +1,9 @@
-import { useLiveQuery } from "dexie-react-hooks"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { db } from "../lib/db"
+import { ApiError } from "../lib/api"
+import { useLiveData } from "../lib/live-data"
 import { createProject } from "../lib/project-ops"
-import type { Project } from "../lib/types"
+import { projectsRepo, TOPICS, type ProjectInput } from "../lib/repo"
+import type { Project, ProjectSummary } from "../lib/types"
 
 const ACTIVE_KEY = "cds.activeProjectId"
 
@@ -23,20 +24,27 @@ function storeActiveId(id: string): void {
 }
 
 export interface ProjectsState {
-  projects: Project[] | undefined
+  projects: ProjectSummary[] | undefined
+  /** The open project with its files (undefined while it loads). */
   active: Project | undefined
+  activeId: string | null
+  error: Error | null
   select: (id: string) => void
   create: (name: string) => Promise<Project>
-  /** Updates an existing project; ignored if it was deleted. */
+  /** Saves the open project; ignored if it was deleted meanwhile. */
   save: (project: Project) => Promise<void>
   /** Adds a new project (e.g. a duplicate) and opens it. */
-  insert: (project: Project) => Promise<void>
+  insert: (input: ProjectInput) => Promise<void>
+  rename: (id: string, name: string) => Promise<void>
   remove: (id: string) => Promise<void>
 }
 
-export function useProjects(): ProjectsState {
-  const projects = useLiveQuery(() => db.projects.orderBy("updatedAt").reverse().toArray(), [])
+/** Projects stored on the server. `ready` is false until browser data has been migrated. */
+export function useProjects(ready: boolean): ProjectsState {
+  const list = useLiveData(ready ? projectsRepo.list : null, [TOPICS.projects])
   const [activeId, setActiveId] = useState<string | null>(readActiveId)
+  const listedActiveId = list.data?.some((p) => p.id === activeId) ? activeId : null
+  const active = useLiveData(listedActiveId ? () => projectsRepo.get(listedActiveId) : null, listedActiveId ? [TOPICS.project(listedActiveId)] : [])
   const isSeeding = useRef(false)
 
   const select = useCallback((id: string) => {
@@ -46,37 +54,34 @@ export function useProjects(): ProjectsState {
 
   const create = useCallback(
     async (name: string) => {
-      const project = createProject(name)
-      await db.projects.add(project)
+      const { name: projectName, entrypoint, files } = createProject(name)
+      const project = await projectsRepo.create({ name: projectName, entrypoint, files })
       select(project.id)
       return project
     },
     [select],
   )
 
-  // Never recreate a project that was deleted while an edit was still pending.
   const save = useCallback(async (project: Project) => {
-    await db.transaction("rw", db.projects, async () => {
-      if (await db.projects.get(project.id)) await db.projects.put(project)
-    })
+    try {
+      await projectsRepo.save(project)
+    } catch (error) {
+      // The project was deleted while an edit was still pending.
+      if (error instanceof ApiError && error.status === 404) return
+      throw error
+    }
   }, [])
 
   const insert = useCallback(
-    async (project: Project) => {
-      await db.projects.add(project)
+    async (input: ProjectInput) => {
+      const project = await projectsRepo.create(input)
       select(project.id)
     },
     [select],
   )
 
-  const remove = useCallback(async (id: string) => {
-    await db.transaction("rw", db.projects, db.messages, async () => {
-      await db.messages.where("projectId").equals(id).delete()
-      await db.projects.delete(id)
-    })
-  }, [])
-
   useEffect(() => {
+    const projects = list.data
     if (!projects) return
     if (projects.length === 0) {
       if (!isSeeding.current) {
@@ -88,7 +93,18 @@ export function useProjects(): ProjectsState {
       return
     }
     if (!projects.some((p) => p.id === activeId)) select(projects[0].id)
-  }, [projects, activeId, create, select])
+  }, [list.data, activeId, create, select])
 
-  return { projects, active: projects?.find((p) => p.id === activeId), select, create, save, insert, remove }
+  return {
+    projects: list.data,
+    active: active.data?.id === listedActiveId ? active.data : undefined,
+    activeId: listedActiveId,
+    error: list.error ?? active.error,
+    select,
+    create,
+    save,
+    insert,
+    rename: projectsRepo.rename,
+    remove: projectsRepo.remove,
+  }
 }

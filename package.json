@@ -2,7 +2,7 @@
   "name": "cds",
   "version": "0.1.0",
   "private": true,
-  "description": "Circuit Design Studio — tscircuit in the browser with an AI assistant",
+  "description": "Circuit Design Studio \u2014 tscircuit in the browser with an AI assistant",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,api -c cyan,magenta \"vite\" \"tsx watch server/index.ts\"",
@@ -10,7 +10,8 @@
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "set-password": "tsx scripts/set-password.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.105",

@@ -11,6 +11,10 @@ export interface Connection {
   apiKey: string
   model: string
   temperatureMode?: TemperatureMode
+  /** The server holds a key for this connection (keys are never sent back to the browser). */
+  hasApiKey?: boolean
+  /** Remove the stored key on the next save. */
+  clearApiKey?: boolean
 }
 
 export interface AiSettings {
@@ -23,6 +27,17 @@ export interface AiSettings {
 }
 
 export type ProjectFiles = Readonly<Record<string, string>>
+
+/** Project as listed (without file contents). */
+export interface ProjectSummary {
+  id: string
+  name: string
+  entrypoint: string
+  workspaceId: string
+  fileCount: number
+  createdAt: number
+  updatedAt: number
+}
 
 export interface Project {
   id: string

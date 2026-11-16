@@ -11,7 +11,9 @@ Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langs
   - Anthropic (Claude) native
   - Google Gemini native
 - **Atur posisi (drag & drop di PCB)**: tombol "Atur posisi" membuka PCB yang bisa diseret. Komponen yang posisinya sudah ditulis di kode (`pcbX`/`pcbY`) diperbarui langsung di kode; komponen lain disimpan ke `manual-edits.json` (format resmi tscircuit, otomatis di-import ke `<board manualEdits={...}>`). Hapus tab `manual-edits.json` untuk mereset posisi manual.
-- **Banyak proyek**: buat, ganti nama, duplikat, hapus, unduh ZIP (bisa dibuka langsung dengan `tsci dev`).
+- **Proyek disimpan di server**: setiap proyek adalah folder biasa di `~/cds-data/workspaces/default/<id-proyek>/` yang bisa langsung dibuka dengan `tsci dev`. Riwayat chat ada di `.cds/chat.json` di folder yang sama. Buat, ganti nama, duplikat, hapus (dipindah ke `~/cds-data/trash/`), unduh ZIP.
+- **Login**: satu pengguna, password di-hash scrypt (`pnpm set-password`). Tanpa password, server hanya mau berjalan di 127.0.0.1.
+- **Pindah dari versi lama**: proyek, chat, dan pengaturan AI yang dulu tersimpan di browser (IndexedDB) otomatis dipindahkan ke server saat aplikasi pertama kali dibuka. Salinan di browser tidak dihapus.
 - **Impor part JLCPCB**: cari part (mis. `C46749`), lalu komponen TSX-nya ditambahkan ke `imports/` dan otomatis di-import ke file utama.
 - **Ekspor** (menu File → Export di preview): Fabrication files (Gerber), KiCad project/library, STEP, GLB, Pinout SVG, Circuit JSON, dan lainnya.
 
@@ -19,12 +21,22 @@ Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langs
 
 ```
 browser (Vite + React 19)                       server (Express 5, kecil)
-├─ IndexedDB: proyek, chat, pengaturan AI       ├─ POST /api/llm/chat    → stream NDJSON dari provider (Vercel AI SDK)
-├─ runframe: eval TSX + viewer (web worker)     ├─ POST /api/llm/models  → daftar model provider
-└─ Monaco editor                                └─ ALL  /api/jlc/proxy   → proxy CORS ke EasyEDA/JLCPCB (allowlist host)
+├─ runframe: eval TSX + viewer (web worker)     ├─ /api/auth             → login, sesi (cookie httpOnly)
+├─ Monaco editor                                ├─ /api/projects         → proyek + chat (folder di CDS_DATA_DIR)
+└─ klien API (src/lib/repo.ts)                  ├─ /api/settings         → pengaturan AI, API key terenkripsi AES-256-GCM
+                                                ├─ POST /api/llm/chat    → stream NDJSON dari provider (Vercel AI SDK)
+                                                ├─ POST /api/llm/models  → daftar model provider
+                                                └─ ALL  /api/jlc/proxy   → proxy CORS ke EasyEDA/JLCPCB (allowlist host)
+
+CDS_DATA_DIR (default ~/cds-data)
+├─ workspaces/default/<id-proyek>/   file sirkuit + package.json (tsci) + .cds/{project,chat}.json
+├─ trash/                            proyek yang dihapus
+├─ settings.json                     pengaturan AI (key terenkripsi)
+├─ sessions.json                     sesi login (hash token)
+└─ secret.key                        kunci enkripsi (kalau CDS_SECRET tidak diisi)
 ```
 
-Server tidak menyimpan apa pun. API key dikirim dari browser per request dan diteruskan ke provider.
+API key tidak pernah dikirim balik ke browser. Browser hanya mengirim id koneksi, lalu server membaca key-nya sendiri.
 
 ## Menjalankan
 
@@ -37,6 +49,13 @@ pnpm dev                # web http://localhost:5180, API :8787
 ```
 
 Lalu buka **Pengaturan AI** (ikon gerigi), tambahkan koneksi dari preset, isi API key, lalu Simpan.
+
+Untuk membuka server ke jaringan (mis. Tailscale), pasang password dulu:
+
+```bash
+pnpm set-password                      # salin baris CDS_PASSWORD_HASH=... ke .env
+HOST=0.0.0.0 pnpm start
+```
 
 Produksi:
 
@@ -52,6 +71,12 @@ pnpm start              # satu proses: API + file statis di API_PORT
 | `API_PORT` | `8787` | Port server API (dev server Vite mem-proxy `/api` ke sini) |
 | `HOST` | `127.0.0.1` (dev) / `0.0.0.0` (prod) | Interface yang didengarkan server |
 | `ALLOW_PRIVATE_LLM_HOSTS` | `true` (dev) / `false` (prod) | Izinkan base URL ke localhost/LAN (perlu untuk Ollama). Biarkan `false` kalau server bisa diakses orang lain, supaya tidak bisa dipakai menembus jaringan internal. |
+| `CDS_DATA_DIR` | `~/cds-data` | Lokasi proyek, chat, pengaturan, sesi |
+| `CDS_PASSWORD_HASH` | kosong | Hash password login dari `pnpm set-password`. Wajib kalau `HOST` bukan 127.0.0.1 |
+| `CDS_SECRET` | kosong | Kunci 32 byte (64 hex) untuk mengenkripsi API key; kalau kosong dibuat otomatis di `CDS_DATA_DIR/secret.key` |
+| `COOKIE_SECURE` | `false` (dev) / `true` (prod) | Cookie sesi hanya lewat HTTPS. Set `false` kalau produksi diakses lewat HTTP (mis. Tailscale tanpa TLS) |
+| `SESSION_TTL_DAYS` | `30` | Lama sesi login |
+| `CDS_ALLOWED_HOSTS` | kosong | Nama host tambahan yang boleh dipakai membuka CDS (mis. nama Tailscale), dipisah koma |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Batas request chat/model AI (`/api/llm`) per IP per menit |
 | `JLC_RATE_LIMIT_PER_MINUTE` | `1200` | Batas request proxy part JLCPCB per IP per menit (satu render preview bisa memicu puluhan) |
 
@@ -59,7 +84,7 @@ pnpm start              # satu proses: API + file statis di API_PORT
 
 ```bash
 pnpm test          # unit test (vitest)
-pnpm test:e2e      # E2E Playwright; memakai mock LLM lokal (e2e/mock-llm.mjs)
+pnpm test:e2e      # E2E Playwright; server sendiri di port 5181/8788 dengan data di .e2e-data, mock LLM lokal (e2e/mock-llm.mjs)
 ```
 
 Tes impor JLCPCB (`e2e/import.spec.ts`) memanggil API jlcsearch/EasyEDA yang asli, jadi butuh internet.
@@ -68,8 +93,11 @@ Tes impor JLCPCB (`e2e/import.spec.ts`) memanggil API jlcsearch/EasyEDA yang asl
 
 - Proxy LLM menolak host privat (kecuali diizinkan), tidak mengikuti redirect, dan membatasi ukuran respons.
 - Proxy JLCPCB hanya ke `easyeda.com`, `lcsc.com`, `jlcpcb.com`, `szlcsc.com` lewat HTTPS.
-- API key ada di IndexedDB browser. Kode sirkuit (termasuk tulisan AI) dijalankan runframe di web worker pada origin yang sama, jadi secara teori kode jahat bisa membaca IndexedDB. Periksa kode dari sumber yang tidak dipercaya sebelum menjalankannya, dan pakai key dengan batas kuota.
-- Tidak ada login: jangan buka server ke internet tanpa reverse proxy berautentikasi (mis. Cloudflare Access / Tailscale).
+- API key disimpan terenkripsi di server dan tidak pernah dikirim ke browser. Kode sirkuit tetap dijalankan di browser; kode jahat bisa memanggil API CDS atas nama sesi yang sedang login, jadi periksa kode dari sumber yang tidak dipercaya sebelum dijalankan.
+- Login satu pengguna dengan cookie httpOnly + SameSite=Strict; setiap request yang mengubah data wajib membawa header `X-CDS-Request` (proteksi CSRF). Tetap disarankan di belakang Tailscale / reverse proxy HTTPS.
+- Jalur file proyek divalidasi: tanpa `..`, file tersembunyi, `node_modules/`, `dist/`, `package.json`, atau file konfigurasi tool (supaya kode tulisan AI tidak ikut dijalankan `tsci`), dan tidak menulis lewat symlink yang keluar dari folder proyek.
+- Header `Host` dicek (hanya localhost dan nama di `CDS_ALLOWED_HOSTS`) untuk mencegah DNS rebinding. Tanpa password, request yang lewat proxy/tunnel (`X-Forwarded-For`, `CF-Connecting-IP`) ditolak, dan mode produksi wajib password.
+- API key tersimpan hanya dikirim ke Base URL tempat key itu disimpan; mengganti Base URL atau jenis API mewajibkan key diisi ulang.
 
 ## Catatan
 

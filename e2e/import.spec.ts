@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./fixtures"
 
 // Uses the live jlcsearch.tscircuit.com and EasyEDA APIs (through /api/jlc/proxy).
 test("imports a JLCPCB part into the project", async ({ page }) => {

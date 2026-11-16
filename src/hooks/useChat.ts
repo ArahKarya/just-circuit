@@ -1,15 +1,16 @@
-import { useLiveQuery } from "dexie-react-hooks"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { db, readAiSettings } from "../lib/db"
 import { toTurns } from "../lib/chat-history"
+import { useLiveData } from "../lib/live-data"
 import { streamChat } from "../lib/llm-client"
 import { filesKey, withFiles } from "../lib/project-ops"
 import { activeConnection, connectionProblem, DEFAULT_AI_SETTINGS, temperatureFor } from "../lib/providers"
 import { changesFromReply } from "../lib/reply-changes"
+import { messagesRepo, projectsRepo, settingsRepo, TOPICS } from "../lib/repo"
 import { buildEditFailureRequest, buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
 import type { ChatMessage, Project, RunStatus } from "../lib/types"
 
 const REASONING_TAIL = 600
+const NO_MESSAGES: ChatMessage[] = []
 
 interface PendingEditFix {
   projectId: string
@@ -44,11 +45,7 @@ function errorText(error: unknown): string {
 
 export function useChat({ project, runStatus, onApplyProject }: UseChatOptions): ChatState {
   const projectId = project?.id
-  const messages =
-    useLiveQuery(
-      () => (projectId ? db.messages.where("projectId").equals(projectId).sortBy("createdAt") : []),
-      [projectId],
-    ) ?? []
+  const messages = useLiveData(projectId ? () => messagesRepo.list(projectId) : null, projectId ? [TOPICS.messages(projectId)] : []).data ?? NO_MESSAGES
   const [streamingText, setStreamingText] = useState("")
   const [reasoningText, setReasoningText] = useState("")
   const [busySince, setBusySince] = useState<number | null>(null)
@@ -67,11 +64,11 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
     async (projectIdToUpdate: string, changes: Record<string, string>): Promise<{ previous: Project; next: Project; isActive: boolean } | null> => {
       const active = projectRef.current
       const isActive = active?.id === projectIdToUpdate
-      const previous = isActive ? active : await db.projects.get(projectIdToUpdate)
+      const previous = isActive ? active : await projectsRepo.get(projectIdToUpdate).catch(() => undefined)
       if (!previous) return null
       const next = withFiles(previous, changes)
       if (isActive) await onApplyProject(next)
-      else await db.projects.put(next)
+      else await projectsRepo.save(next)
       return { previous, next, isActive }
     },
     [onApplyProject],
@@ -87,11 +84,11 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
       setStreamingText("")
       setReasoningText("")
       const addMessage = (message: Omit<ChatMessage, "id" | "projectId" | "createdAt">) =>
-        db.messages.add({ id: crypto.randomUUID(), projectId: current.id, createdAt: Date.now(), ...message })
+        messagesRepo.add({ id: crypto.randomUUID(), projectId: current.id, createdAt: Date.now(), ...message })
       try {
         // Read settings and history from the database so nothing saved a moment ago is missed.
-        const settings = { ...DEFAULT_AI_SETTINGS, ...(await readAiSettings()) }
-        const history = await db.messages.where("projectId").equals(current.id).sortBy("createdAt")
+        const settings = { ...DEFAULT_AI_SETTINGS, ...(await settingsRepo.read()) }
+        const history = await messagesRepo.list(current.id)
         await addMessage({ role: "user", content: text })
         const connection = activeConnection(settings)
         const problem = connectionProblem(connection)
@@ -197,14 +194,14 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
       setAutoFixRemaining(0)
       expectedRevision.current = null
       await onApplyProject({ ...current, files: message.previousFiles, updatedAt: Date.now() })
-      await db.messages.update(message.id, { previousFiles: undefined, appliedFiles: [] })
+      await messagesRepo.update(current.id, message.id, { previousFiles: null, appliedFiles: [] })
     },
     [onApplyProject],
   )
 
   const clear = useCallback(async () => {
     if (!projectId) return
-    await db.messages.where("projectId").equals(projectId).delete()
+    await messagesRepo.clear(projectId)
   }, [projectId])
 
   return { messages, streamingText, reasoningText, busySince, isBusy, autoFixRemaining, send, stop, undo, clear }

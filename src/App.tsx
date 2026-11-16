@@ -1,10 +1,11 @@
 import type { ManualEditEvent } from "@tscircuit/core"
 import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@tscircuit/runframe/runner"
-import { CircuitBoard, Code2, FolderOpen, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { CircuitBoard, Code2, FolderOpen, LogOut, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
 import toast from "react-hot-toast"
 import { ChatPanel } from "./components/ChatPanel"
+import { LoginScreen } from "./components/LoginScreen"
 import { LayoutEditor } from "./components/LayoutEditor"
 import { CodeEditor } from "./components/CodeEditor"
 import { PreviewPane } from "./components/PreviewPane"
@@ -12,6 +13,8 @@ import { ProjectsDialog } from "./components/ProjectsDialog"
 import { SettingsDialog } from "./components/SettingsDialog"
 import { Button, IconButton } from "./components/ui"
 import { useAiSettings } from "./hooks/useAiSettings"
+import { useAuth } from "./hooks/useAuth"
+import { useBrowserMigration } from "./hooks/useBrowserMigration"
 import { useChat } from "./hooks/useChat"
 import { useProjects } from "./hooks/useProjects"
 import { useWorkingProject } from "./hooks/useWorkingProject"
@@ -31,8 +34,22 @@ const STATUS_STYLES: Record<RunStatus["state"], { label: string; className: stri
   error: { label: "Build error", className: "text-danger" },
 }
 
+/** Root: login (when the server requires it), then the studio. */
 export function App() {
-  const projects = useProjects()
+  const auth = useAuth()
+  if (auth.error && !auth.status) return <CenteredMessage tone="error">Server CDS tidak bisa dihubungi: {auth.error}</CenteredMessage>
+  if (!auth.status) return <CenteredMessage>Menghubungkan ke server…</CenteredMessage>
+  if (!auth.status.authenticated) return <LoginScreen onLogin={auth.login} />
+  return <Studio onLogout={auth.status.authRequired ? () => void auth.logout() : undefined} />
+}
+
+function CenteredMessage({ children, tone }: { children: ReactNode; tone?: "error" }) {
+  return <div className={`flex h-full items-center justify-center p-4 text-center text-sm ${tone === "error" ? "text-danger" : "text-muted"}`}>{children}</div>
+}
+
+function Studio({ onLogout }: { onLogout?: () => void }) {
+  const migration = useBrowserMigration(true)
+  const projects = useProjects(migration.ready)
   const working = useWorkingProject(projects.active, projects.save)
   const ai = useAiSettings()
   const [leftTab, setLeftTab] = useState<LeftTab>("chat")
@@ -110,7 +127,9 @@ export function App() {
   const files = useMemo(() => project?.files ?? {}, [project?.files])
 
   if (!project) {
-    return <div className="flex h-full items-center justify-center text-sm text-muted">Memuat proyek…</div>
+    const error = migration.error ?? projects.error?.message
+    if (error) return <CenteredMessage tone="error">Gagal memuat proyek: {error}</CenteredMessage>
+    return <CenteredMessage>Memuat proyek…</CenteredMessage>
   }
 
   return (
@@ -135,6 +154,7 @@ export function App() {
           </Button>
           <Button onClick={() => setDialog("import")}><PackagePlus size={15} />Impor part JLCPCB</Button>
           <IconButton label="Pengaturan AI" onClick={() => setDialog("settings")}><Settings size={17} /></IconButton>
+          {onLogout && <IconButton label="Keluar" onClick={onLogout}><LogOut size={16} /></IconButton>}
         </div>
       </header>
 

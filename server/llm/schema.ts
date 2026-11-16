@@ -10,7 +10,8 @@ export const connectionSchema = z.object({
 })
 
 export const chatRequestSchema = z.object({
-  connection: connectionSchema.extend({ model: z.string().trim().min(1, "Model wajib diisi").max(200) }),
+  /** Saved connection; its API key is read on the server and never sent by the browser. */
+  connectionId: z.string().min(1).max(100),
   // Holds the whole project; a multi-module design like a PLC easily passes 60k characters.
   system: z.string().max(600_000),
   messages: z
@@ -26,7 +27,8 @@ export const chatRequestSchema = z.object({
   maxOutputTokens: z.number().int().min(256).max(64_000).optional(),
 })
 
-export const modelsRequestSchema = z.object({ connection: connectionSchema })
+/** Listing models works for unsaved connections too; an empty apiKey falls back to the saved one. */
+export const modelsRequestSchema = z.object({ connection: connectionSchema, connectionId: z.string().max(100).optional() })
 
 export type Connection = z.infer<typeof connectionSchema>
 export type ChatRequest = z.infer<typeof chatRequestSchema>

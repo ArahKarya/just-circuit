@@ -1,7 +1,7 @@
-import { useLiveQuery } from "dexie-react-hooks"
 import { useCallback } from "react"
-import { readAiSettings, writeAiSettings } from "../lib/db"
+import { useLiveData } from "../lib/live-data"
 import { DEFAULT_AI_SETTINGS } from "../lib/providers"
+import { settingsRepo, TOPICS } from "../lib/repo"
 import type { AiSettings } from "../lib/types"
 
 export interface AiSettingsState {
@@ -11,11 +11,13 @@ export interface AiSettingsState {
 }
 
 export function useAiSettings(): AiSettingsState {
-  const stored = useLiveQuery(readAiSettings, [], null)
-  const save = useCallback((next: AiSettings) => writeAiSettings(next), [])
+  const stored = useLiveData(settingsRepo.read, [TOPICS.settings])
+  const save = useCallback(async (next: AiSettings) => {
+    await settingsRepo.write(next)
+  }, [])
   return {
-    settings: stored ? { ...DEFAULT_AI_SETTINGS, ...stored } : DEFAULT_AI_SETTINGS,
-    isLoaded: stored !== null,
+    settings: stored.data ? { ...DEFAULT_AI_SETTINGS, ...stored.data } : DEFAULT_AI_SETTINGS,
+    isLoaded: stored.data !== undefined,
     save,
   }
 }

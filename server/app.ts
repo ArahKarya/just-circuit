@@ -4,9 +4,27 @@ import { fileURLToPath } from "node:url"
 import path from "node:path"
 import { config } from "./config.js"
 import { errorMessage, logger } from "./logger.js"
+import { rm } from "node:fs/promises"
+import type { createAuth } from "./auth/auth.js"
+import { hostGuard } from "./middleware/host-guard.js"
 import { rateLimit } from "./middleware/rate-limit.js"
 import { jlcRouter } from "./routes/jlc.js"
 import { llmRouter } from "./routes/llm.js"
+import { migrateRouter } from "./routes/migrate.js"
+import { projectsRouter } from "./routes/projects.js"
+import { settingsRouter } from "./routes/settings.js"
+import type { ProjectStore } from "./storage/projects.js"
+import type { SettingsStore } from "./storage/settings.js"
+
+export interface AppDeps {
+  auth: ReturnType<typeof createAuth>
+  projects: ProjectStore
+  settings: SettingsStore
+}
+
+/** Project files and chat snapshots can be large; the browser migration sends everything at once. */
+const PROJECT_BODY_LIMIT = "16mb"
+const MIGRATION_BODY_LIMIT = "64mb"
 
 const DIST_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist")
 
@@ -22,7 +40,7 @@ function serveClient(app: express.Express): void {
   })
 }
 
-export function createApp(): express.Express {
+export function createApp({ auth, projects, settings }: AppDeps): express.Express {
   const app = express()
   app.disable("x-powered-by")
   app.use((_req, res, next) => {
@@ -32,13 +50,30 @@ export function createApp(): express.Express {
     next()
   })
   app.set("trust proxy", "loopback")
+  app.use(hostGuard({ allowedHosts: config.allowedHosts, allowAnyHost: auth.isEnabled && !config.isLoopbackOnly, loginDisabled: !auth.isEnabled }))
 
   app.get("/api/health", (_req, res) => {
     res.json({ success: true, data: { status: "ok", allowPrivateLlmHosts: config.allowPrivateLlmHosts } })
   })
+  app.use("/api/auth", auth.requireCsrfHeader, auth.router())
+
+  // Everything below needs a session (when a password is set).
+  app.use("/api", auth.requireSession)
+  if (config.isE2e) {
+    // Test-only (index.ts refuses CDS_E2E outside a loopback dev server): wipe stored data between E2E tests.
+    app.post("/api/test/reset", auth.requireCsrfHeader, (_req, res, next) => {
+      Promise.all(["workspaces", "trash", "settings.json"].map((name) => rm(path.join(config.dataDir, name), { recursive: true, force: true })))
+        .then(() => res.json({ success: true, data: null }), next)
+    })
+  }
   // Separate budgets: one preview render alone fires dozens of part lookups through the JLC proxy.
+  // The JLC proxy is read-only and called by runframe without our CSRF header.
   app.use("/api/jlc", rateLimit(config.jlcRateLimitPerMinute), jlcRouter())
-  app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter())
+  app.use("/api", auth.requireCsrfHeader)
+  app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter(settings))
+  app.use("/api/projects", express.json({ limit: PROJECT_BODY_LIMIT }), projectsRouter(projects))
+  app.use("/api/settings", express.json({ limit: "1mb" }), settingsRouter(settings))
+  app.use("/api/migrate", express.json({ limit: MIGRATION_BODY_LIMIT }), migrateRouter(projects, settings))
   app.use("/api", (_req, res) => {
     res.status(404).json({ success: false, error: "Endpoint tidak ditemukan" })
   })
