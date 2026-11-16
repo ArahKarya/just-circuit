@@ -1,8 +1,11 @@
 import { RunFrame } from "@tscircuit/runframe/runner"
 import { memo, useCallback, useMemo } from "react"
+import { ErrorBoundary } from "react-error-boundary"
 import { useDebounced } from "../hooks/useDebounced"
 import { filesKey } from "../lib/project-ops"
+import { classifyRunErrors } from "../lib/run-status"
 import type { ProjectFiles, RunStatus } from "../lib/types"
+import { PreviewCrash } from "./PreviewCrash"
 
 interface PreviewPaneProps {
   files: ProjectFiles
@@ -14,31 +17,17 @@ interface PreviewPaneProps {
 
 const PREVIEW_DEBOUNCE_MS = 700
 
-function describeError(error: unknown): string {
-  if (typeof error === "string") return error
-  if (error && typeof error === "object") {
-    const record = error as Record<string, unknown>
-    const message = record.message ?? record.error_message ?? record.error
-    if (typeof message === "string") return message
-  }
-  try {
-    return JSON.stringify(error).slice(0, 500)
-  } catch {
-    return "Error tidak dikenal"
-  }
-}
-
 function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson }: PreviewPaneProps) {
   const debouncedFiles = useDebounced(files, PREVIEW_DEBOUNCE_MS)
   const revision = useMemo(() => filesKey(debouncedFiles), [debouncedFiles])
   const fsMap = useMemo(() => ({ ...debouncedFiles }), [debouncedFiles])
 
-  const handleStarted = useCallback(() => onStatus({ state: "running", errors: [], revision }), [onStatus, revision])
+  const handleStarted = useCallback(() => onStatus({ state: "running", errors: [], warnings: [], revision }), [onStatus, revision])
   const handleCompleted = useCallback(
     ({ errors, hasExecutionError }: { errors?: unknown[]; hasExecutionError: boolean }) => {
-      const messages = (errors ?? []).map(describeError).filter(Boolean)
+      const { errors: messages, warnings } = classifyRunErrors(errors ?? [])
       const failed = hasExecutionError || messages.length > 0
-      onStatus({ state: failed ? "error" : "ok", errors: messages, revision })
+      onStatus({ state: failed ? "error" : "ok", errors: messages, warnings, revision })
     },
     [onStatus, revision],
   )
@@ -46,17 +35,21 @@ function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson }: Preview
 
   return (
     <div className="h-full min-h-0 overflow-hidden bg-white">
-      <RunFrame
-        fsMap={fsMap}
-        mainComponentPath={entrypoint}
-        showFileMenu
-        showToggleFullScreen
-        defaultActiveTab="pcb"
-        onRenderStarted={handleStarted}
-        onRunCompleted={handleCompleted}
-        onRenderFinished={handleRenderFinished}
-        easyEdaProxyConfig={{ proxyEndpointUrl: "/api/jlc/proxy" }}
-      />
+      <ErrorBoundary FallbackComponent={PreviewCrash} resetKeys={[revision]}>
+        <RunFrame
+          fsMap={fsMap}
+          mainComponentPath={entrypoint}
+          showFileMenu
+          showToggleFullScreen
+          defaultActiveTab="pcb"
+          onRenderStarted={handleStarted}
+          onRunCompleted={handleCompleted}
+          onRenderFinished={handleRenderFinished}
+          easyEdaProxyConfig={{ proxyEndpointUrl: "/api/jlc/proxy" }}
+          evalWebWorkerBlobUrl={__EVAL_WORKER_URL__}
+          evalVersion={__EVAL_VERSION__}
+        />
+      </ErrorBoundary>
     </div>
   )
 }

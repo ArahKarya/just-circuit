@@ -129,3 +129,18 @@ export function connectionProblem(connection: Connection | undefined): string | 
   }
   return null
 }
+
+/** Models that reject temperature: Claude 5.x+ and OpenAI reasoning models (o1, o3, gpt-5…). */
+const NO_TEMPERATURE = [/claude-(?:opus|sonnet|haiku|fable)-([5-9]|\d{2,})/i, /(?:^|\/)(?:o\d|gpt-5)/i]
+
+export function supportsTemperature(model: string): boolean {
+  return !NO_TEMPERATURE.some((pattern) => pattern.test(model))
+}
+
+/** Temperature to send for this connection, or undefined to leave it to the provider. */
+export function temperatureFor(connection: Connection, temperature: number): number | undefined {
+  const mode = connection.temperatureMode ?? "auto"
+  if (mode === "omit") return undefined
+  if (mode === "send") return temperature
+  return supportsTemperature(connection.model) ? temperature : undefined
+}

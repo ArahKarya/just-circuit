@@ -11,7 +11,8 @@ export const connectionSchema = z.object({
 
 export const chatRequestSchema = z.object({
   connection: connectionSchema.extend({ model: z.string().trim().min(1, "Model wajib diisi").max(200) }),
-  system: z.string().max(60_000),
+  // Holds the whole project; a multi-module design like a PLC easily passes 60k characters.
+  system: z.string().max(600_000),
   messages: z
     .array(
       z.object({

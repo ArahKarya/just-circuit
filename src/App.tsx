@@ -38,7 +38,7 @@ export function App() {
   const [leftTab, setLeftTab] = useState<LeftTab>("chat")
   const [dialog, setDialog] = useState<DialogName>(null)
   const [activeFile, setActiveFile] = useState<string | null>(null)
-  const [runStatus, setRunStatus] = useState<RunStatus>({ state: "idle", errors: [], revision: "" })
+  const [runStatus, setRunStatus] = useState<RunStatus>({ state: "idle", errors: [], warnings: [], revision: "" })
   const [circuitJson, setCircuitJson] = useState<unknown[] | null>(null)
   const [isLayoutMode, setIsLayoutMode] = useState(false)
   /** Circuit shown in the layout editor, fixed while it is open. */
@@ -124,6 +124,11 @@ export function App() {
           <span className="truncate">{project.name}</span>
         </button>
         <span className={`ml-2 text-xs ${status.className}`} title={runStatus.errors.join("\n")}>{status.label}</span>
+        {runStatus.warnings.length > 0 && (
+          <span className="ml-2 cursor-help text-xs text-amber-400" title={runStatus.warnings.join("\n\n")}>
+            {runStatus.warnings.length} peringatan
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1">
           <Button onClick={openLayoutEditor} disabled={!canEditLayout || isLayoutMode} title={canEditLayout ? "Seret komponen di PCB" : "Butuh build yang berhasil"}>
             <Move size={15} />Atur posisi

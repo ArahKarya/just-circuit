@@ -9,7 +9,8 @@ export interface ChatRequest {
   connection: Connection
   system: string
   messages: ChatTurn[]
-  temperature: number
+  /** Undefined leaves temperature out of the request. */
+  temperature: number | undefined
   maxOutputTokens: number
   signal?: AbortSignal
   onText: (delta: string) => void

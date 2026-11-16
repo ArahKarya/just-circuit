@@ -1,15 +1,20 @@
 import { useLiveQuery } from "dexie-react-hooks"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { db, readAiSettings } from "../lib/db"
-import { extractFiles } from "../lib/extract-code"
-import { streamChat, type ChatTurn } from "../lib/llm-client"
+import { toTurns } from "../lib/chat-history"
+import { streamChat } from "../lib/llm-client"
 import { filesKey, withFiles } from "../lib/project-ops"
-import { activeConnection, connectionProblem, DEFAULT_AI_SETTINGS } from "../lib/providers"
-import { buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
+import { activeConnection, connectionProblem, DEFAULT_AI_SETTINGS, temperatureFor } from "../lib/providers"
+import { changesFromReply } from "../lib/reply-changes"
+import { buildEditFailureRequest, buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
 import type { ChatMessage, Project, RunStatus } from "../lib/types"
 
-const HISTORY_LIMIT = 16
 const REASONING_TAIL = 600
+
+interface PendingEditFix {
+  projectId: string
+  failures: string[]
+}
 
 interface UseChatOptions {
   project: Project | undefined
@@ -32,13 +37,6 @@ export interface ChatState {
   clear: () => Promise<void>
 }
 
-function toTurns(messages: readonly ChatMessage[]): ChatTurn[] {
-  return messages
-    .filter((m) => !m.isError)
-    .slice(-HISTORY_LIMIT)
-    .map((m) => ({ role: m.role, content: m.content }))
-}
-
 function errorText(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") return "Dihentikan."
   return error instanceof Error ? error.message : "Terjadi kesalahan yang tidak diketahui"
@@ -56,6 +54,8 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
   const [busySince, setBusySince] = useState<number | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [autoFixRemaining, setAutoFixRemaining] = useState(0)
+  /** Edits the AI sent that did not match the files; handed back to it like build errors. */
+  const [editFailures, setEditFailures] = useState<PendingEditFix | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const expectedRevision = useRef<string | null>(null)
   const busyRef = useRef(false)
@@ -107,7 +107,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
           connection,
           system: buildSystemPrompt(current.files, current.entrypoint),
           messages: [...toTurns(history), { role: "user", content: text }],
-          temperature: settings.temperature,
+          temperature: temperatureFor(connection, settings.temperature),
           maxOutputTokens: settings.maxOutputTokens,
           signal: controller.signal,
           onText: (delta) => setStreamingText((prev) => prev + delta),
@@ -116,17 +116,21 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
         const content = result.truncated
           ? `${result.text}\n\n(Jawaban terpotong karena batas token. Naikkan "Maks token jawaban" di Pengaturan.)`
           : result.text
-        const files = extractFiles(result.text, current.entrypoint)
-        const applied = files.length > 0 ? await applyToProject(current.id, Object.fromEntries(files.map((f) => [f.path, f.content]))) : null
+        const { changes, failures } = changesFromReply(result.text, current.files, current.entrypoint)
+        const paths = Object.keys(changes)
+        const note = failures.length > 0 ? `\n\n(Edit gagal diterapkan:\n${failures.map((f) => `- ${f}`).join("\n")})` : ""
+        const applied = paths.length > 0 ? await applyToProject(current.id, changes) : null
+        if (failures.length > 0) setEditFailures({ projectId: current.id, failures })
         if (!applied) {
-          setAutoFixRemaining(0)
-          await addMessage({ role: "assistant", content })
+          if (failures.length === 0) setAutoFixRemaining(0)
+          await addMessage({ role: "assistant", content: content + note })
           return true
         }
         const changed = filesKey(applied.next.files) !== filesKey(applied.previous.files)
-        if (applied.isActive && changed) expectedRevision.current = filesKey(applied.next.files)
-        else setAutoFixRemaining(0)
-        await addMessage({ role: "assistant", content, appliedFiles: files.map((f) => f.path), previousFiles: applied.previous.files })
+        // Failed edits are fixed first; the build is checked on the reply after that.
+        if (applied.isActive && changed && failures.length === 0) expectedRevision.current = filesKey(applied.next.files)
+        else if (failures.length === 0) setAutoFixRemaining(0)
+        await addMessage({ role: "assistant", content: content + note, appliedFiles: paths, previousFiles: applied.previous.files })
       } catch (error) {
         setAutoFixRemaining(0)
         await addMessage({ role: "assistant", content: errorText(error), isError: true })
@@ -150,6 +154,19 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
     [run],
   )
 
+  // When the AI's edits don't match the files, ask it to resend them (shares the auto-fix budget).
+  useEffect(() => {
+    if (isBusy || !editFailures) return
+    const pending = editFailures
+    setEditFailures(null)
+    // Never send the follow-up into another project's chat.
+    if (autoFixRemaining <= 0 || projectRef.current?.id !== pending.projectId) return
+    void run(buildEditFailureRequest(pending.failures), true).then((started) => {
+      if (started) setAutoFixRemaining((n) => n - 1)
+      else setEditFailures(pending) // the user sent a message at the same moment; retry once idle
+    })
+  }, [editFailures, isBusy, autoFixRemaining, run])
+
   // When the AI's code fails to build, hand the errors back to it a limited number of times.
   useEffect(() => {
     if (isBusy || autoFixRemaining <= 0) return
@@ -169,6 +186,7 @@ export function useChat({ project, runStatus, onApplyProject }: UseChatOptions):
   const stop = useCallback(() => {
     abortRef.current?.abort()
     expectedRevision.current = null
+    setEditFailures(null)
     setAutoFixRemaining(0)
   }, [])
 

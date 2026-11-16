@@ -5,7 +5,7 @@ Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langs
 ## Fitur
 
 - **Editor + preview live**: editor Monaco, preview PCB / Schematic / 3D / BOM dari `@tscircuit/runframe`. Kode dijalankan di browser (web worker), bukan di server.
-- **Chat AI**: minta rangkaian dengan bahasa biasa. AI menulis file lengkap, kodenya langsung diterapkan dan dipreview. Kalau build gagal, error dikirim balik ke AI untuk diperbaiki otomatis (default 2x, bisa diatur). Setiap perubahan dari AI bisa dibatalkan.
+- **Chat AI**: minta rangkaian dengan bahasa biasa. AI menulis file baru secara lengkap dan mengubah file yang ada lewat edit sebagian (blok SEARCH/REPLACE), jadi desain besar tidak terpotong batas token. Kodenya langsung diterapkan dan dipreview; edit yang tidak cocok dikembalikan ke AI. Kalau build gagal, error dikirim balik ke AI untuk diperbaiki otomatis (default 2x, bisa diatur). Setiap perubahan dari AI bisa dibatalkan.
 - **Pengaturan API LLM di web**: beberapa koneksi sekaligus, pilih yang aktif, tombol "Ambil model" untuk daftar model dari provider.
   - OpenAI-compatible: OpenRouter, Groq, Ollama lokal, 9router, OpenAI, atau endpoint `/v1/chat/completions` lainnya
   - Anthropic (Claude) native
@@ -52,7 +52,8 @@ pnpm start              # satu proses: API + file statis di API_PORT
 | `API_PORT` | `8787` | Port server API (dev server Vite mem-proxy `/api` ke sini) |
 | `HOST` | `127.0.0.1` (dev) / `0.0.0.0` (prod) | Interface yang didengarkan server |
 | `ALLOW_PRIVATE_LLM_HOSTS` | `true` (dev) / `false` (prod) | Izinkan base URL ke localhost/LAN (perlu untuk Ollama). Biarkan `false` kalau server bisa diakses orang lain, supaya tidak bisa dipakai menembus jaringan internal. |
-| `RATE_LIMIT_PER_MINUTE` | `60` | Batas request `/api` per IP per menit |
+| `RATE_LIMIT_PER_MINUTE` | `60` | Batas request chat/model AI (`/api/llm`) per IP per menit |
+| `JLC_RATE_LIMIT_PER_MINUTE` | `1200` | Batas request proxy part JLCPCB per IP per menit (satu render preview bisa memicu puluhan) |
 
 ## Tes
 
@@ -72,7 +73,11 @@ Tes impor JLCPCB (`e2e/import.spec.ts`) memanggil API jlcsearch/EasyEDA yang asl
 
 ## Catatan
 
+- Roadmap pengembangan: [docs/ROADMAP.md](docs/ROADMAP.md).
+
 - `tsc` butuh heap besar karena tipe tscircuit sangat besar; `src/types/runframe.d.ts` berisi tipe ringkas untuk bagian runframe yang dipakai.
 - Ekspor Altium tidak didukung (paketnya hanya tersedia dari git dan butuh build Bun). Pakai ekspor KiCad lalu impor ke Altium.
+- Mesin eval tscircuit (`@tscircuit/eval`, ±21 MB) dilayani dari aplikasi sendiri di `/vendor/tscircuit-eval-<versi>.js` (lihat `vite-plugins/eval-worker.ts`), jadi preview tidak bergantung pada CDN. Versi `@tscircuit/eval`, `runframe`, dan `core` dikunci persis di `package.json`; naikkan ketiganya bersamaan.
+- Beberapa hasil pengecekan tscircuit ditampilkan sebagai **peringatan**, bukan error, misalnya polaritas LED/dioda yang berbeda dengan part JLCPCB pilihan otomatis. Peringatan tidak memicu auto-fix AI.
 - Preview PCB memakai WebGPU; pakai Chrome/Edge/Safari versi baru. Tes E2E menyalakan WebGPU software (SwiftShader) lewat argumen Chromium di `e2e/layout.spec.ts`.
 - Geser komponen hanya di PCB. Schematic viewer di runframe versi ini belum mengirim event edit.

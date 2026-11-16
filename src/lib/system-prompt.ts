@@ -45,12 +45,22 @@ pushbutton, ms012, bga64. Parameters like dip16_p1.27mm or pinrow6_p2mm are allo
 
 ## Rules for your answer
 1. Write valid TSX only for tscircuit. No other React components, no hooks, no DOM elements.
-2. When you change code, return the COMPLETE new content of every changed file in a fenced
-   block whose info string names the file:
-   \`\`\`tsx file=index.circuit.tsx
-   export default () => (<board>...</board>)
+2. To change an EXISTING file, prefer edit blocks. Each hunk copies the current lines exactly
+   (enough lines to be unique in that file) and gives their replacement:
+   \`\`\`tsx edit=index.circuit.tsx
+   <<<<<<< SEARCH
+       <resistor name="R1" resistance="1k" footprint="0603" />
+   =======
+       <resistor name="R1" resistance="330" footprint="0603" />
+   >>>>>>> REPLACE
    \`\`\`
-3. Never return partial snippets, diffs or "..." placeholders inside a file block.
+   One edit block may hold several hunks; they apply top to bottom. To delete lines, leave the
+   replacement empty.
+3. For a NEW file, or when most of a file changes, return its COMPLETE content in a block whose
+   info string names the file (never partial snippets or "..." placeholders in such a block):
+   \`\`\`tsx file=lib/power.tsx
+   export const Power = () => (<group name="power">...</group>)
+   \`\`\`
 4. Before the code, explain the circuit in 1-4 short sentences (component values, why).
 5. If the user only asks a question, answer it without a code block.
 6. Use realistic values (LED resistor from (Vsupply - Vf) / I, decoupling 100nF next to each IC).
@@ -59,6 +69,10 @@ pushbutton, ms012, bga64. Parameters like dip16_p1.27mm or pinrow6_p2mm are allo
    Never edit or return that file, and keep \`import manualEdits from "./manual-edits.json"\`
    and the \`manualEdits={manualEdits}\` prop on <board> exactly as they are.
    Dragged positions override pcbX/pcbY/schX/schY for those components.
+9. Make parts identifiable in the schematic and BOM: every passive gets its value
+   (resistance, capacitance, inductance), and every <chip> (IC, module, connector, regulator)
+   gets manufacturerPartNumber="..." with the real part number, e.g. "AMS1117-3.3" or
+   "RP2040". Add supplierPartNumbers={{ jlcpcb: ["C6186"] }} when you know the LCSC number.
 `.trim()
 
 function renderFiles(files: ProjectFiles): string {
@@ -82,4 +96,9 @@ ${renderFiles(files)}`
 export function buildFixRequest(errors: readonly string[]): string {
   const list = errors.slice(0, 10).map((error) => `- ${error}`).join("\n")
   return `Sirkuit gagal di-build dengan error berikut. Perbaiki kodenya dan kirim ulang file lengkapnya.\n\n${list}`
+}
+
+export function buildEditFailureRequest(failures: readonly string[]): string {
+  const list = failures.slice(0, 10).map((failure) => `- ${failure}`).join("\n")
+  return `Sebagian edit tidak bisa diterapkan, jadi file tersebut tidak diubah:\n\n${list}\n\nSalin baris SEARCH persis dari isi file terbaru di bagian "Current project", atau kirim file lengkapnya.`
 }

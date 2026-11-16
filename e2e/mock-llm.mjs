@@ -19,6 +19,18 @@ const FIXED = [
   "```",
 ].join("\n")
 
+const editBlock = (search, replace) =>
+  `\`\`\`tsx edit=index.circuit.tsx\n<<<<<<< SEARCH\n${search}\n=======\n${replace}\n>>>>>>> REPLACE\n\`\`\``
+// "EDIT": first a SEARCH that doesn't match the file, then (after the app reports it) a correct one.
+const BAD_EDIT = `Ganti resistor.\n${editBlock('resistance="999"', 'resistance="470"')}`
+const GOOD_EDIT = `Resistor diganti 470Ω.\n${editBlock('    <resistor name="R1" resistance="330" footprint="0603" pcbX={0} />', '    <resistor name="R1" resistance="470" footprint="0603" pcbX={0} />')}`
+
+function pickReply(last) {
+  if (last.includes("Sebagian edit tidak bisa")) return GOOD_EDIT
+  if (last.includes("EDIT")) return BAD_EDIT
+  return last.includes("gagal di-build") || last.includes("THINK") ? FIXED : BROKEN
+}
+
 function readBody(req) {
   return new Promise((resolve) => {
     let data = ""
@@ -52,7 +64,7 @@ createServer(async (req, res) => {
         await sleep(500)
       }
     }
-    const reply = last.includes("gagal di-build") || last.includes("THINK") ? FIXED : BROKEN
+    const reply = pickReply(last)
     for (let i = 0; i < reply.length; i += 40) res.write(chunk(reply.slice(i, i + 40)))
     res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`)
     res.end("data: [DONE]\n\n")

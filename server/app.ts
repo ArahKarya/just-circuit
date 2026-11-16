@@ -33,12 +33,12 @@ export function createApp(): express.Express {
   })
   app.set("trust proxy", "loopback")
 
-  app.use("/api", rateLimit(config.rateLimitPerMinute))
   app.get("/api/health", (_req, res) => {
     res.json({ success: true, data: { status: "ok", allowPrivateLlmHosts: config.allowPrivateLlmHosts } })
   })
-  app.use("/api/jlc", jlcRouter())
-  app.use("/api/llm", express.json({ limit: config.maxBodyBytes }), llmRouter())
+  // Separate budgets: one preview render alone fires dozens of part lookups through the JLC proxy.
+  app.use("/api/jlc", rateLimit(config.jlcRateLimitPerMinute), jlcRouter())
+  app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter())
   app.use("/api", (_req, res) => {
     res.status(404).json({ success: false, error: "Endpoint tidak ditemukan" })
   })

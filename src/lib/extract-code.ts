@@ -5,6 +5,7 @@ export interface ExtractedFile {
 
 const FENCE = /```([^\n`]*)\n([\s\S]*?)```/g
 const CODE_LANGS = new Set(["tsx", "ts", "jsx", "js", "typescript", "javascript"])
+const EDIT_BLOCK = /\bedit\s*=/i
 const SAFE_PATH = /^[\w.-]+(\/[\w.-]+)*\.(tsx|ts|jsx|js)$/
 
 function parsePath(info: string): string | null {
@@ -14,7 +15,7 @@ function parsePath(info: string): string | null {
   return bare ?? null
 }
 
-function isSafePath(path: string): boolean {
+export function isSafePath(path: string): boolean {
   return SAFE_PATH.test(path) && !path.split("/").includes("..")
 }
 
@@ -25,6 +26,8 @@ function isSafePath(path: string): boolean {
 export function extractFiles(reply: string, entrypoint: string): ExtractedFile[] {
   const byPath = new Map<string, string>()
   for (const [, info, body] of reply.matchAll(FENCE)) {
+    // SEARCH/REPLACE blocks are handled by apply-edits.ts.
+    if (EDIT_BLOCK.test(info)) continue
     const lang = info.trim().split(/[\s{]/)[0].toLowerCase()
     const namedPath = parsePath(info)
     if (!namedPath && !CODE_LANGS.has(lang)) continue
@@ -40,6 +43,8 @@ export function extractFiles(reply: string, entrypoint: string): ExtractedFile[]
 /** Text of the reply with code blocks replaced by a short marker, for display. */
 export function stripCodeBlocks(reply: string): string {
   return reply.replace(FENCE, (_match, info: string) => {
+    const edited = info.match(/\bedit\s*=\s*["']?([^\s"']+)/i)?.[1]
+    if (edited) return `\n[edit: ${edited}]\n`
     const path = parsePath(info)
     return path ? `\n[kode: ${path}]\n` : "\n[kode]\n"
   })

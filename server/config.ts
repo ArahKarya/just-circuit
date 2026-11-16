@@ -18,7 +18,9 @@ export const config = Object.freeze({
   /** Private/LAN LLM hosts (Ollama) are allowed in dev and blocked in production unless enabled. */
   allowPrivateLlmHosts: readBool(process.env.ALLOW_PRIVATE_LLM_HOSTS, !isProduction),
   rateLimitPerMinute: readInt(process.env.RATE_LIMIT_PER_MINUTE, 60),
-  maxBodyBytes: "2mb",
+  /** Part lookups made by the preview (each render can fire dozens). */
+  jlcRateLimitPerMinute: readInt(process.env.JLC_RATE_LIMIT_PER_MINUTE, 1200),
+  maxBodyBytes: "8mb",
   /** Hard cap for one AI reply; long circuits with reasoning models can take minutes. */
   upstreamTimeoutMs: 600_000,
   /** Abort when the provider sends nothing (text or reasoning) for this long. */

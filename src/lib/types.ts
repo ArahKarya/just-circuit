@@ -1,5 +1,8 @@
 export type ProviderKind = "openai-compatible" | "anthropic" | "gemini"
 
+/** "auto" sends temperature unless the model is known to reject it. */
+export type TemperatureMode = "auto" | "send" | "omit"
+
 export interface Connection {
   id: string
   name: string
@@ -7,6 +10,7 @@ export interface Connection {
   baseUrl: string
   apiKey: string
   model: string
+  temperatureMode?: TemperatureMode
 }
 
 export interface AiSettings {
@@ -47,6 +51,8 @@ export interface ChatMessage {
 export interface RunStatus {
   state: "idle" | "running" | "ok" | "error"
   errors: string[]
+  /** Design concerns that don't fail the build (shown, never auto-fixed). */
+  warnings: string[]
   /** filesKey() of the files this status belongs to. */
   revision: string
 }

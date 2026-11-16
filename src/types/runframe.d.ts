@@ -26,6 +26,9 @@ export interface RunFrameProps {
   onRenderFinished?: (params: { circuitJson: unknown[] }) => void
   onError?: (error: Error) => void
   easyEdaProxyConfig?: { proxyEndpointUrl: string; headers?: Record<string, string> }
+  /** Worker script URL; when set, runframe skips fetching "latest" from a CDN. */
+  evalWebWorkerBlobUrl?: string
+  evalVersion?: string
 }
 
 export declare function RunFrame(props: RunFrameProps): JSX.Element

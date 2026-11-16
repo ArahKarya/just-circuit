@@ -1,10 +1,42 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 
-test("renders the starter project", async ({ page }) => {
+async function addMockConnection(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Pengaturan AI" }).click()
+  await page.getByLabel("Tambah dari preset").selectOption("custom")
+  await page.getByRole("button", { name: "Tambah", exact: true }).click()
+  await page.getByLabel("Base URL").fill("http://localhost:9911/v1")
+  await page.getByLabel("Model").fill("mock-1")
+  await page.getByRole("button", { name: "Simpan" }).click()
+}
+
+test("renders the starter project with the bundled eval worker", async ({ page }) => {
+  const urls: string[] = []
+  page.on("request", (request) => urls.push(request.url()))
   await page.goto("/")
   await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
   await page.getByText("Schematic", { exact: true }).click()
   await expect(page.getByText("330Ω", { exact: true })).toBeVisible()
+  expect(urls.some((url) => url.includes("/vendor/tscircuit-eval-"))).toBe(true)
+  // The worker script itself never comes from a CDN (runframe may still list versions for its menu).
+  expect(urls.filter((url) => /@tscircuit\/eval.*entrypoint/.test(url))).toEqual([])
+})
+
+test("applies a partial edit after the AI corrects a SEARCH that didn't match", async ({ page }) => {
+  await page.goto("/")
+  await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
+  await addMockConnection(page)
+
+  await page.getByLabel("Pesan untuk AI").fill("EDIT ganti resistor ke 470")
+  await page.getByLabel("Pesan untuk AI").press("Enter")
+  await expect(page.getByText(/Edit gagal diterapkan/)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText("Resistor diganti 470Ω.")).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
+  await page.getByText("Schematic", { exact: true }).click()
+  await expect(page.getByText("470Ω", { exact: true })).toBeVisible()
+
+  await page.getByRole("tab", { name: "Kode" }).click()
+  // The rest of the file is untouched.
+  await expect(page.locator(".monaco-editor")).toContainText('color="red"')
 })
 
 test("configures an AI connection, generates a circuit and auto-fixes a failed build", async ({ page }) => {

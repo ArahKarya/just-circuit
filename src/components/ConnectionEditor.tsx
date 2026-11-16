@@ -1,8 +1,8 @@
 import { Eye, EyeOff, ListRestart, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { fetchModels } from "../lib/llm-client"
-import { KIND_LABELS } from "../lib/providers"
-import type { Connection, ProviderKind } from "../lib/types"
+import { KIND_LABELS, supportsTemperature } from "../lib/providers"
+import type { Connection, ProviderKind, TemperatureMode } from "../lib/types"
 import { Button, Field } from "./ui"
 
 interface ConnectionEditorProps {
@@ -15,6 +15,21 @@ const BASE_URL_HINT: Record<ProviderKind, string> = {
   anthropic: "Kosongkan untuk https://api.anthropic.com/v1. Untuk proxy (mis. 9router) isi http://host:port/v1.",
   gemini: "Kosongkan untuk https://generativelanguage.googleapis.com/v1beta",
 }
+
+const TEMPERATURE_LABELS: Record<TemperatureMode, string> = {
+  auto: "Otomatis",
+  send: "Selalu kirim",
+  omit: "Jangan kirim",
+}
+
+function temperatureHint(connection: Connection): string {
+  if ((connection.temperatureMode ?? "auto") !== "auto") return "Pengaturan manual untuk koneksi ini."
+  return supportsTemperature(connection.model)
+    ? "Dikirim untuk model ini."
+    : "Tidak dikirim: model ini (Claude 5, GPT-5, seri o) menolak temperature."
+}
+
+const SELECT_CLASS = "h-9 w-full rounded-md border border-line bg-surface px-2 text-sm text-ink focus:border-accent focus:outline-none"
 
 export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps) {
   const [showKey, setShowKey] = useState(false)
@@ -43,7 +58,7 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
           <select
             value={connection.kind}
             onChange={(e) => update({ kind: e.target.value as ProviderKind })}
-            className="h-9 w-full rounded-md border border-line bg-surface px-2 text-sm text-ink focus:border-accent focus:outline-none"
+            className={SELECT_CLASS}
           >
             {(Object.keys(KIND_LABELS) as ProviderKind[]).map((kind) => (
               <option key={kind} value={kind}>{KIND_LABELS[kind]}</option>
@@ -87,6 +102,20 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
       </div>
       {modelsState.error && <p className="text-xs text-danger">{modelsState.error}</p>}
       {!modelsState.error && models.length > 0 && <p className="text-xs text-muted">{models.length} model ditemukan, pilih dari kolom Model.</p>}
+      <div className="space-y-1">
+        <label htmlFor={`temperature-${connection.id}`} className="text-xs font-medium text-muted">Temperature</label>
+        <select
+          id={`temperature-${connection.id}`}
+          value={connection.temperatureMode ?? "auto"}
+          onChange={(e) => update({ temperatureMode: e.target.value as TemperatureMode })}
+          className={SELECT_CLASS}
+        >
+          {(Object.keys(TEMPERATURE_LABELS) as TemperatureMode[]).map((mode) => (
+            <option key={mode} value={mode}>{TEMPERATURE_LABELS[mode]}</option>
+          ))}
+        </select>
+        <p className="text-xs text-muted">{temperatureHint(connection)}</p>
+      </div>
     </div>
   )
 }
