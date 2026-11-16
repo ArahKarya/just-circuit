@@ -74,6 +74,9 @@ export function createApp({ auth, projects, settings, workspaces, preferences }:
   }
   // Separate budgets: one preview render alone fires dozens of part lookups through the JLC proxy.
   // The JLC proxy is read-only and called by runframe without our CSRF header.
+  app.get("/api/terminal/status", (_req, res) => {
+    res.json({ success: true, data: { enabled: config.enableTerminal } })
+  })
   app.use("/api/jlc", rateLimit(config.jlcRateLimitPerMinute), jlcRouter())
   app.use("/api", auth.requireCsrfHeader)
   app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter(settings))

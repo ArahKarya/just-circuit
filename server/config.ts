@@ -57,6 +57,10 @@ export const config = Object.freeze({
   loginRateLimitPerMinute: readInt(process.env.LOGIN_RATE_LIMIT_PER_MINUTE, 10),
   /** Extra Host names the server answers to (e.g. a Tailscale name); loopback names are always allowed. */
   allowedHosts: (process.env.CDS_ALLOWED_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean),
+  /** In-browser terminal (a shell on this machine for the signed-in user). Off by default in production. */
+  enableTerminal: readBool(process.env.ENABLE_TERMINAL, !isProduction),
+  terminalShell: process.env.TERMINAL_SHELL || process.env.SHELL || "/bin/bash",
+  maxTerminals: readInt(process.env.MAX_TERMINALS, 8),
   /** Enables POST /api/test/reset for the E2E suite. Never set this outside tests. */
   isE2e: process.env.CDS_E2E === "1",
 })

@@ -412,7 +412,10 @@ export function createProjectStore(dataDir: string) {
     })
   }
 
-  return { list, get, create, update, remove, move, versions, diffOf, saveVersion, restoreVersion, listTrash, restore, purge, purgeOlderThan, messages, changeMessages, workspacesDir }
+  /** Folder of a project on disk (the terminal starts there). */
+  const pathOf = (id: string): Promise<string> => locate(id)
+
+  return { pathOf, list, get, create, update, remove, move, versions, diffOf, saveVersion, restoreVersion, listTrash, restore, purge, purgeOlderThan, messages, changeMessages, workspacesDir }
 }
 
 export type ProjectStore = ReturnType<typeof createProjectStore>

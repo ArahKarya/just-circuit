@@ -1,11 +1,12 @@
 import type { ManualEditEvent } from "@tscircuit/core"
 import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@tscircuit/runframe/runner"
-import { CircuitBoard, Code2, FolderOpen, History, LogOut, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
+import { CircuitBoard, Code2, FolderOpen, History, LogOut, TerminalSquare, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
 import toast from "react-hot-toast"
 import { ChatPanel } from "./components/ChatPanel"
 import { HistoryDialog } from "./components/history/HistoryDialog"
+import { TerminalPanel } from "./components/terminal/TerminalPanel"
 import { LoginScreen } from "./components/LoginScreen"
 import { LayoutEditor } from "./components/LayoutEditor"
 import { CodeEditor } from "./components/CodeEditor"
@@ -22,7 +23,9 @@ import { useFileActions } from "./hooks/useFileActions"
 import { useProjects } from "./hooks/useProjects"
 import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
+import { notifyChange } from "./lib/live-data"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
+import { TOPICS } from "./lib/repo"
 import { addImportedComponent, withFiles } from "./lib/project-ops"
 import { chatConnection, connectionProblem } from "./lib/providers"
 import type { RunStatus } from "./lib/types"
@@ -62,6 +65,19 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const [runStatus, setRunStatus] = useState<RunStatus>({ state: "idle", errors: [], warnings: [], revision: "" })
   const [circuitJson, setCircuitJson] = useState<unknown[] | null>(null)
   const [isLayoutMode, setIsLayoutMode] = useState(false)
+  const [showTerminal, setShowTerminal] = useState(false)
+
+  // Ctrl+` (like VS Code) opens and closes the terminal.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.key === "`") {
+        event.preventDefault()
+        setShowTerminal((open) => !open)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
   /** Circuit shown in the layout editor, fixed while it is open. */
   const layoutCircuit = useRef<unknown[]>([])
   const project = working.project
@@ -157,6 +173,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           <Button onClick={openLayoutEditor} disabled={!canEditLayout || isLayoutMode} title={canEditLayout ? "Seret komponen di PCB" : "Butuh build yang berhasil"}>
             <Move size={15} />Atur posisi
           </Button>
+          <Button onClick={() => setShowTerminal((open) => !open)} aria-pressed={showTerminal} title="Terminal (Ctrl+`)"><TerminalSquare size={15} />Terminal</Button>
           <Button onClick={() => setDialog("history")}><History size={15} />Riwayat</Button>
           <Button onClick={() => setDialog("import")}><PackagePlus size={15} />Impor part JLCPCB</Button>
           <IconButton label="Pengaturan" onClick={() => setDialog("settings")}><Settings size={17} /></IconButton>
@@ -211,6 +228,15 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           )}
         </section>
       </main>
+      {showTerminal && (
+        <TerminalPanel
+          projectId={project.id}
+          projectName={project.name}
+          theme={theme}
+          onClose={() => setShowTerminal(false)}
+          onSettled={() => notifyChange(TOPICS.project(project.id), TOPICS.versions(project.id), TOPICS.projects)}
+        />
+      )}
 
       {dialog === "settings" && (
         <SettingsDialog settings={ai.settings} onSaveAi={ai.save} preferences={preferences} project={project} onClose={closeDialog} />

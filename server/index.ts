@@ -10,6 +10,7 @@ import { createProjectStore, TRASH_RETENTION_MS } from "./storage/projects.js"
 import { createPreferencesStore } from "./storage/preferences.js"
 import { createSettingsStore } from "./storage/settings.js"
 import { createWorkspaceStore } from "./storage/workspaces.js"
+import { attachTerminalServer } from "./terminal/terminal-server.js"
 
 function checkAuthConfig(): void {
   if (config.passwordHash && !isPasswordHash(config.passwordHash)) {
@@ -53,8 +54,22 @@ const server = app.listen(config.port, config.host, () => {
     production: config.isProduction,
     dataDir: config.dataDir,
     login: auth.isEnabled ? "password" : "off (loopback only)",
+    terminal: config.enableTerminal,
     allowPrivateLlmHosts: config.allowPrivateLlmHosts,
   })
+})
+
+if (config.enableTerminal && !auth.isEnabled) {
+  logger.warn("Terminal is on without a password: any program or user on this machine that can reach the port can open a shell. Set CDS_PASSWORD_HASH (pnpm set-password) on shared machines.")
+}
+
+attachTerminalServer(server, {
+  enabled: config.enableTerminal,
+  shell: config.terminalShell,
+  maxSessions: config.maxTerminals,
+  hostGuard: { allowedHosts: config.allowedHosts, allowAnyHost: auth.isEnabled && !config.isLoopbackOnly, loginDisabled: !auth.isEnabled },
+  isSignedIn: auth.isSignedIn,
+  projectDir: projects.pathOf,
 })
 
 function shutdown(signal: string): void {

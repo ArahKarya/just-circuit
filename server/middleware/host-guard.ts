@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express"
+import type { IncomingHttpHeaders } from "node:http"
 
 const LOOPBACK_NAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
 const FORWARDED_HEADERS = ["x-forwarded-for", "forwarded", "cf-connecting-ip", "x-real-ip"]
@@ -12,7 +13,7 @@ export interface HostGuardOptions {
   loginDisabled: boolean
 }
 
-function hostName(value: string | undefined): string {
+export function hostName(value: string | undefined): string {
   if (!value) return ""
   const host = value.trim().toLowerCase()
   if (host.startsWith("[")) return host.slice(0, host.indexOf("]") + 1)
@@ -24,15 +25,23 @@ function hostName(value: string | undefined): string {
  * the Host header, and refuses proxied traffic while login is off, so a tunnel in front
  * of a loopback-only server can't expose it without a password.
  */
-export function hostGuard(options: HostGuardOptions) {
+/** Why a request must be refused, or null when it may pass (shared by HTTP and the terminal WebSocket). */
+export function hostProblem(options: HostGuardOptions, headers: IncomingHttpHeaders): { status: number; error: string } | null {
   const allowed = new Set([...LOOPBACK_NAMES, ...options.allowedHosts.map(hostName)])
+  if (options.loginDisabled && FORWARDED_HEADERS.some((header) => headers[header] !== undefined)) {
+    return { status: 403, error: "Akses lewat proxy butuh login. Set CDS_PASSWORD_HASH (pnpm set-password)." }
+  }
+  if (!options.allowAnyHost && !allowed.has(hostName(headers.host))) {
+    return { status: 421, error: "Host tidak dikenal. Tambahkan ke CDS_ALLOWED_HOSTS." }
+  }
+  return null
+}
+
+export function hostGuard(options: HostGuardOptions) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (options.loginDisabled && FORWARDED_HEADERS.some((header) => req.headers[header] !== undefined)) {
-      res.status(403).json({ success: false, error: "Akses lewat proxy butuh login. Set CDS_PASSWORD_HASH (pnpm set-password)." })
-      return
-    }
-    if (!options.allowAnyHost && !allowed.has(hostName(req.headers.host))) {
-      res.status(421).json({ success: false, error: "Host tidak dikenal. Tambahkan ke CDS_ALLOWED_HOSTS." })
+    const problem = hostProblem(options, req.headers)
+    if (problem) {
+      res.status(problem.status).json({ success: false, error: problem.error })
       return
     }
     next()

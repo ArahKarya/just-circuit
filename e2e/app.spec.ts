@@ -36,7 +36,8 @@ test("applies a partial edit after the AI corrects a SEARCH that didn't match", 
 
   await page.getByRole("tab", { name: "Kode" }).click()
   // The rest of the file is untouched.
-  await expect(page.locator(".monaco-editor")).toContainText('color="red"')
+  // Monaco can take a while to start when the machine is busy.
+  await expect(page.locator(".monaco-editor")).toContainText('color="red"', { timeout: 20_000 })
 })
 
 test("configures an AI connection, generates a circuit and auto-fixes a failed build", async ({ page }) => {

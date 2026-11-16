@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import toast from "react-hot-toast"
+import { filesKey } from "../lib/project-ops"
 import type { Project } from "../lib/types"
 
 const SAVE_DELAY_MS = 400
@@ -73,7 +74,13 @@ export function useWorkingProject(stored: Project | undefined, save: (project: P
   useEffect(() => {
     if (!stored) return
     if (!pending.current && inFlight.current === 0) {
-      setProject(stored)
+      // Same content (e.g. a reload after a terminal command that changed nothing): keep the
+      // current object so the preview doesn't rebuild for nothing.
+      setProject((current) =>
+        current && current.id === stored.id && current.entrypoint === stored.entrypoint && filesKey(current.files) === filesKey(stored.files)
+          ? { ...current, name: stored.name, settings: stored.settings }
+          : stored,
+      )
       return
     }
     setProject((current) => (current && current.id === stored.id ? { ...current, name: stored.name } : current))

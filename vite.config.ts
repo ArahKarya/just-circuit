@@ -19,7 +19,8 @@ export default defineConfig({
   server: {
     port: Number(process.env.VITE_PORT ?? 5180),
     strictPort: true,
-    proxy: { "/api": `http://127.0.0.1:${API_PORT}` },
+    // ws: the terminal is a WebSocket under /api/terminal.
+    proxy: { "/api": { target: `http://127.0.0.1:${API_PORT}`, ws: true } },
   },
   worker: { format: "es" },
   // runframe bundles the whole tscircuit toolchain; large chunks are expected.

@@ -3,7 +3,7 @@ import type { Request } from "express"
 export const SESSION_COOKIE = "cds_session"
 
 /** Minimal Cookie header parser (we only read our own session cookie). */
-export function readCookie(req: Request, name: string): string | undefined {
+export function readCookie(req: Pick<Request, "headers">, name: string): string | undefined {
   const header = req.headers.cookie
   if (!header) return undefined
   for (const part of header.split(";")) {

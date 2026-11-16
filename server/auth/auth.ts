@@ -28,7 +28,7 @@ function sendUnauthorized(res: Response): void {
 export function createAuth(options: AuthOptions) {
   const isEnabled = options.passwordHash !== ""
 
-  async function isSignedIn(req: Request): Promise<boolean> {
+  async function isSignedIn(req: Pick<Request, "headers">): Promise<boolean> {
     return !isEnabled || (await options.sessions.isValid(readCookie(req, SESSION_COOKIE)))
   }
 

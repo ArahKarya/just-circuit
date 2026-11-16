@@ -11,7 +11,8 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "set-password": "tsx scripts/set-password.ts"
+    "set-password": "tsx scripts/set-password.ts",
+    "postinstall": "node scripts/fix-node-pty.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.105",
@@ -42,6 +43,8 @@
     "@tscircuit/schematic-viewer": "^2.0.110",
     "@tscircuit/solver-utils": "^0.0.25",
     "@tscircuit/system-block-viewer": "https://jscdn.tscircuit.com/@tscircuit/system-block-viewer/0.0.5.tgz",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "ai": "^7.0.173",
     "circuit-json": "^0.0.551",
     "circuit-json-to-step": "^0.0.63",
@@ -60,6 +63,7 @@
     "lucide-react": "^1.73.0",
     "marked": "^18.2.0",
     "minimatch": "^11.0.8",
+    "node-pty": "^1.1.0",
     "posthog-js": "^1.449.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -68,6 +72,7 @@
     "react-query": "^3.39.3",
     "tailwind-merge": "^3.7.0",
     "typescript": "^5.9.3",
+    "ws": "^8.23.0",
     "zod": "^3.25.76",
     "zustand": "^5.1.0"
   },
@@ -78,6 +83,7 @@
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^6.3.0",
     "concurrently": "^10.0.7",
     "tailwindcss": "^4.3.5",
@@ -87,7 +93,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "node-pty"
     ]
   }
 }

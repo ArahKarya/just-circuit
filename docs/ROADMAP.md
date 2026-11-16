@@ -58,12 +58,12 @@ Rencana awal:
 - [ ] Mode Vim di editor (butuh paket monaco-vim, belum).
 - [ ] Default board (layer, clearance) sebagai field terstruktur — sementara lewat "aturan tambahan".
 
-## Fase 3 — Terminal
+## Fase 3 — Terminal (selesai 16 Nov 2026)
 
-- xterm.js (browser) + node-pty + WebSocket (server); panel bawah (Ctrl+`), banyak tab, cwd = folder proyek aktif.
-- Pemantau folder: perubahan dari terminal (`tsci add`, `git checkout`) langsung muncul di editor/preview, dan sebaliknya.
-- Tombol cepat: `tsci build`, export Gerber, `git log`.
-- Keamanan: wajib login, cek Origin WebSocket, mati default di produksi (`ENABLE_TERMINAL=true`), bind 127.0.0.1 / Tailscale.
+- [x] xterm.js + node-pty + WebSocket `/api/terminal`; panel bawah (Ctrl+\`), banyak tab, ubah tinggi, besarkan; cwd = folder proyek.
+- [x] Perubahan file dari terminal muat ulang otomatis ke editor/preview (setelah output berhenti 0,7 dtk) dan dicatat sebagai versi.
+- [x] Tombol cepat `tsci build`, `git log`.
+- [x] Keamanan: login + Host + Origin, env shell allowlist, batas sesi, heartbeat, backpressure, frame besar tidak menjatuhkan server; mati default di produksi.
 
 ## Fase 4 — AI agen (opsional)
 

@@ -14,6 +14,7 @@ Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langs
 - **Proyek disimpan di server**: setiap proyek adalah folder biasa di `~/cds-data/workspaces/default/<id-proyek>/` yang bisa langsung dibuka dengan `tsci dev`. Riwayat chat ada di `.cds/chat.json` di folder yang sama. Buat, ganti nama, duplikat, hapus (dipindah ke `~/cds-data/trash/`), unduh ZIP.
 - **Penjelajah file**: folder, file baru (`lib/power.tsx`), ganti nama/pindah file dan folder, hapus, jadikan file utama (ikon bintang), dan cari teks di semua file (klik hasil untuk loncat ke barisnya).
 - **Workspace & tempat sampah**: kelompokkan proyek per workspace, pindahkan antar workspace, proyek yang dihapus bisa dipulihkan selama 30 hari. Proyek baru bisa dari template (LED, kosong, Raspberry Pi Pico, catu daya 3.3V) atau impor ZIP.
+- **Terminal** (tombol Terminal atau Ctrl+\`): shell sungguhan di server, mulai di folder proyek aktif, bisa beberapa tab. Jalankan `tsci build`, `tsci add`, `git`, dst. File yang diubah dari terminal otomatis muncul di editor dan preview, dan dicatat sebagai versi "Perubahan di luar editor". Tombol cepat: `tsci build`, `git log`.
 - **Riwayat versi**: setiap proyek adalah repo git. Perubahan dari AI, batal (undo), dan impor part otomatis tercatat sebagai versi; tombol **Riwayat** menampilkan diff tiap versi, menyimpan versi manual, dan mengembalikan versi lama (isi sekarang disimpan dulu, jadi tidak ada yang hilang). Butuh `git` di server.
 - **Login**: satu pengguna, password di-hash scrypt (`pnpm set-password`). Tanpa password, server hanya mau berjalan di 127.0.0.1.
 - **Pindah dari versi lama**: proyek, chat, dan pengaturan AI yang dulu tersimpan di browser (IndexedDB) otomatis dipindahkan ke server saat aplikasi pertama kali dibuka. Salinan di browser tidak dihapus.
@@ -79,6 +80,9 @@ pnpm start              # satu proses: API + file statis di API_PORT
 | `CDS_SECRET` | kosong | Kunci 32 byte (64 hex) untuk mengenkripsi API key; kalau kosong dibuat otomatis di `CDS_DATA_DIR/secret.key` |
 | `COOKIE_SECURE` | `false` (dev) / `true` (prod) | Cookie sesi hanya lewat HTTPS. Set `false` kalau produksi diakses lewat HTTP (mis. Tailscale tanpa TLS) |
 | `SESSION_TTL_DAYS` | `30` | Lama sesi login |
+| `ENABLE_TERMINAL` | `true` (dev) / `false` (prod) | Terminal di browser. Tanpa password, program lain di mesin yang sama juga bisa membukanya |
+| `TERMINAL_SHELL` | `$SHELL` | Shell yang dijalankan |
+| `MAX_TERMINALS` | `8` | Jumlah terminal terbuka sekaligus |
 | `CDS_ALLOWED_HOSTS` | kosong | Nama host tambahan yang boleh dipakai membuka CDS (mis. nama Tailscale), dipisah koma |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Batas request chat/model AI (`/api/llm`) per IP per menit |
 | `JLC_RATE_LIMIT_PER_MINUTE` | `1200` | Batas request proxy part JLCPCB per IP per menit (satu render preview bisa memicu puluhan) |
@@ -100,6 +104,7 @@ Tes impor JLCPCB (`e2e/import.spec.ts`) memanggil API jlcsearch/EasyEDA yang asl
 - Login satu pengguna dengan cookie httpOnly + SameSite=Strict; setiap request yang mengubah data wajib membawa header `X-CDS-Request` (proteksi CSRF). Tetap disarankan di belakang Tailscale / reverse proxy HTTPS.
 - Jalur file proyek divalidasi: tanpa `..`, file tersembunyi, `node_modules/`, `dist/`, `package.json`, atau file konfigurasi tool (supaya kode tulisan AI tidak ikut dijalankan `tsci`), dan tidak menulis lewat symlink yang keluar dari folder proyek.
 - Header `Host` dicek (hanya localhost dan nama di `CDS_ALLOWED_HOSTS`) untuk mencegah DNS rebinding. Tanpa password, request yang lewat proxy/tunnel (`X-Forwarded-For`, `CF-Connecting-IP`) ditolak, dan mode produksi wajib password.
+- Terminal: WebSocket `/api/terminal` hanya diterima dari halaman CDS sendiri (Origin = Host), setelah login dan cek Host; environment shell hanya berisi variabel dasar (PATH, HOME, LANG, …), bukan isi `.env` atau API key. Terminal tetap berarti akses penuh ke mesin untuk pengguna yang login: shell bisa membaca `CDS_DATA_DIR` (termasuk `secret.key`). Di produksi terminal mati kecuali `ENABLE_TERMINAL=true`.
 - API key tersimpan hanya dikirim ke Base URL tempat key itu disimpan; mengganti Base URL atau jenis API mewajibkan key diisi ulang.
 
 ## Catatan
