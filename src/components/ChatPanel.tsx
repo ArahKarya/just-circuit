@@ -3,16 +3,26 @@ import { useEffect, useRef, useState, type DragEvent } from "react"
 import { useAttachmentDraft } from "../hooks/useAttachmentDraft"
 import type { ChatState } from "../hooks/useChat"
 import { stripCodeBlocks } from "../lib/extract-code"
-import type { ChatMessage, Connection } from "../lib/types"
+import type { AttachmentRef, ChatMessage, Connection } from "../lib/types"
 import { PendingReply } from "./PendingReply"
 import { ChatComposer } from "./chat/ChatComposer"
 import { MessageAttachments } from "./chat/MessageAttachments"
 import { ToolSteps } from "./ToolSteps"
 import { IconButton } from "./ui"
 
+/** A message prepared elsewhere (part search) and put in the box for the user to review and send. */
+export interface ChatDraftRequest {
+  text: string
+  attachments: AttachmentRef[]
+  nonce: number
+}
+
 interface ChatPanelProps {
   /** Project the chat belongs to (attachments are stored with it). */
   projectId: string | undefined
+  draftRequest?: ChatDraftRequest | null
+  /** Called once the request is in the box, so a remount doesn't add it again. */
+  onDraftRequestHandled?: () => void
   chat: ChatState
   connection: Connection | undefined
   connectionProblem: string | null
@@ -77,12 +87,22 @@ function MessageBubble({ message, projectId, canUndo, onUndo, onRunCommand }: Me
 /** True when a drag carries files (not text or a link dragged from the page). */
 const draggingFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files")
 
-export function ChatPanel({ projectId, chat, connection, connectionProblem, onOpenSettings, agentMode, onToggleAgent, onRunCommand }: ChatPanelProps) {
+export function ChatPanel({ projectId, draftRequest, onDraftRequestHandled, chat, connection, connectionProblem, onOpenSettings, agentMode, onToggleAgent, onRunCommand }: ChatPanelProps) {
   const [draft, setDraft] = useState("")
   const attachments = useAttachmentDraft(projectId)
   const [dropping, setDropping] = useState(false)
   const dragDepth = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
+
+  // Only a new request fills the box; attachments.addReady is stable.
+  useEffect(() => {
+    if (!draftRequest) return
+    // Added below what the user was typing, never over it.
+    setDraft((current) => (current.trim() ? `${current.trimEnd()}\n\n${draftRequest.text}` : draftRequest.text))
+    attachments.addReady(draftRequest.attachments)
+    onDraftRequestHandled?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftRequest?.nonce])
   const lastAppliedId = [...chat.messages].reverse().find((m) => m.previousFiles)?.id
 
   useEffect(() => {

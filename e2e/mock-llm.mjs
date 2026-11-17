@@ -99,7 +99,79 @@ function chunk(content, field = "content") {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** A small valid one-page PDF (datasheet download in the part search tests). */
+function pdfWith(text) {
+  const stream = `BT /F1 12 Tf 20 100 Td (${text}) Tj ET`
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ]
+  let out = "%PDF-1.4\n"
+  const offsets = []
+  objects.forEach((body, index) => {
+    offsets.push(out.length)
+    out += `${index + 1} 0 obj\n${body}\nendobj\n`
+  })
+  const xref = out.length
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(out, "latin1")
+}
+
+/** Stand-ins for the tscircuit part services ("/parts/<source>/…"). */
+function partsReply(url) {
+  const q = (url.searchParams.get("q") ?? "").toUpperCase()
+  const path = url.pathname.replace(/^\/parts/, "")
+  if (path === "/ti/api/search") {
+    return { components: q.includes("ADS8688") ? [{ mfr: "ADS8688IDBT", ti_product_number: "ADS8688IDBT", package: "38-TSSOP", description: "16-bit 8-channel SAR ADC", stock: 4103, price: 21.9, datasheet_url: "http://localhost:9911/parts/datasheet.pdf" }] : [] }
+  }
+  if (path === "/digikey/api/search") {
+    return { components: q.includes("W5500") ? [{ mfr: "W5500", manufacturer: "WIZnet", digikey_product_number: "1278-1021-ND", package: "48-LQFP", stock: 900, price: 4.2 }] : [] }
+  }
+  if (path === "/mouser/api/search" || path === "/jlcpcb/api/search") return { components: [] }
+  if (path === "/registry/packages/search") return { packages: [] }
+  if (path === "/registry/datasheets/list") return { datasheets: [{ datasheet_id: "ds-w5500", chip_name: "W5500" }] }
+  if (path === "/registry/datasheets/get") {
+    if (url.searchParams.get("chip_name") !== "w5500") return null
+    return {
+      datasheet: {
+        chip_name: "W5500",
+        manufacturer_part_number: "W5500",
+        ai_description: "Ethernet controller",
+        footprinter_string: "soic8",
+        pin_information: [
+          { name: ["VDD"], pin_number: "1" },
+          { name: ["GND"], pin_number: "2" },
+          { name: ["GND"], pin_number: "3" },
+          { name: ["SCLK"], pin_number: "4" },
+        ],
+        pin_attributes: { pin1: { requiresPower: true } },
+        datasheet_pdf_urls: ["https://example.com/w5500.pdf"],
+      },
+    }
+  }
+  if (path === "/kicad/kicad_files.json") {
+    return ["Package_SO.pretty/HTSSOP-38-1EP_4.4x9.7mm_P0.5mm_EP1.5x3.3mm.kicad_mod", "Package_SO.pretty/TSSOP-38_4.4x9.7mm_P0.5mm.kicad_mod", "Package_QFP.pretty/LQFP-48_7x7mm_P0.5mm.kicad_mod"]
+  }
+  return undefined
+}
+
 createServer(async (req, res) => {
+  if (req.url?.startsWith("/parts/")) {
+    const url = new URL(req.url, "http://localhost")
+    if (url.pathname === "/parts/datasheet.pdf") {
+      res.writeHead(200, { "Content-Type": "application/pdf" })
+      res.end(pdfWith("ADS8688 pin 1 AUX_IN"))
+      return
+    }
+    const body = partsReply(url)
+    res.writeHead(body === undefined ? 404 : body === null ? 404 : 200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify(body ?? { error: "not found" }))
+    return
+  }
   if (req.method === "GET" && req.url === "/v1/models") {
     res.writeHead(200, { "Content-Type": "application/json" })
     res.end(JSON.stringify({ object: "list", data: [{ id: "mock-1" }, { id: "mock-2" }] }))

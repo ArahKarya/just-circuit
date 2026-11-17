@@ -75,3 +75,6 @@ Rencana awal:
 - [x] Panel DRC/ERC (tab "Masalah"): error/peringatan PCB, skematik dan rangkaian dari circuit JSON, saring, klik nama komponen untuk loncat ke deklarasinya di kode, "Minta AI perbaiki". Status build di header membuka panel ini.
 - [x] Lampiran di chat: gambar (diperkecil di browser), PDF (utuh ke Claude/Gemini sampai 20 halaman, selain itu teks per halaman lewat `unpdf`), file teks/netlist/KiCad; klip, seret, tempel screenshot; disimpan di `.cds/attachments/`, dihapus bersama chat.
 - [x] Board besar: tombol Skematik/Routing per proyek (platformConfig `schematicDisabled`/`routingDisabled` untuk preview, runner bun + core untuk build agen), daftar masalah build terakhir dikirim ke AI.
+- [x] Cari part multi-sumber (katalog datasheet, JLCPCB/LCSC, TI, DigiKey, Mouser, KiCad, registry): tambah dari katalog, simpan ke Library, "Buat dari datasheet" (server unduh PDF ke chat), tool agen search_parts/search_footprints.
+- [ ] Footprint `kicad:` di build agen (server tanpa internet: unduh footprint di luar sandbox dulu).
+- [ ] Unggah `.kicad_mod` (pabrikan/SnapEDA/Ultra Librarian) → komponen.

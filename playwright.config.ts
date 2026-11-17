@@ -18,7 +18,7 @@ export default defineConfig({
       port: WEB_PORT,
       reuseExistingServer: false,
       timeout: 90_000,
-      env: { CDS_E2E: "1", CDS_DATA_DIR: ".e2e-data", API_PORT: String(API_PORT), VITE_PORT: String(WEB_PORT), CDS_PASSWORD_HASH: "" },
+      env: { CDS_E2E: "1", CDS_PARTS_TEST_BASE: "http://localhost:9911/parts", CDS_DATA_DIR: ".e2e-data", API_PORT: String(API_PORT), VITE_PORT: String(WEB_PORT), CDS_PASSWORD_HASH: "" },
     },
   ],
 })

@@ -129,3 +129,17 @@ describe("chat attachments", () => {
     expect((await fetch(`${url}/${meta.id}`, { headers: { cookie } })).status).toBe(404)
   })
 })
+
+describe("part search API", () => {
+  it("validates queries and never downloads from private addresses", async () => {
+    const login = await fetch(`${base}/api/auth/login`, { method: "POST", headers: csrf, body: JSON.stringify({ password: PASSWORD }) })
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]
+    expect((await fetch(`${base}/api/parts/search?q=${encodeURIComponent("<script>")}`, { headers: { cookie } })).status).toBe(400)
+    expect((await fetch(`${base}/api/parts/search?q=NE555&sources=evil`, { headers: { cookie } })).status).toBe(400)
+    const created = await (await fetch(`${base}/api/projects`, { method: "POST", headers: { ...csrf, cookie }, body: JSON.stringify({ name: "Parts", entrypoint: "index.circuit.tsx", files: { "index.circuit.tsx": "1" } }) })).json()
+    const download = await fetch(`${base}/api/parts/datasheet`, { method: "POST", headers: { ...csrf, cookie }, body: JSON.stringify({ projectId: created.data.id, url: `${base}/api/health`, name: "X1" }) })
+    expect(download.status).toBe(400)
+    expect((await download.json()).error).toMatch(/privat/)
+  })
+})
+

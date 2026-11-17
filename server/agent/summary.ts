@@ -18,7 +18,10 @@ export function describeToolCall(name: string, input: unknown): string {
       return String(args.path ?? "")
     case "search_files":
     case "search_jlcpcb":
+    case "search_parts":
       return `"${clip(String(args.query ?? ""))}"`
+    case "search_footprints":
+      return `"${clip(String(args.package ?? ""))}"`
     case "propose_command":
       return String(args.command ?? "")
     default:
@@ -45,6 +48,14 @@ export function describeToolResult(name: string, output: unknown): string {
     case "search_jlcpcb": {
       const parts = Array.isArray(result.parts) ? (result.parts as Record<string, unknown>[]) : []
       return parts.length === 0 ? "tidak ada part" : clip(parts.slice(0, 3).map((p) => `${p.lcsc} ${p.mfr} (${p.package})`).join(", "))
+    }
+    case "search_parts": {
+      const parts = Array.isArray(result.parts) ? (result.parts as Record<string, unknown>[]) : []
+      return parts.length === 0 ? "tidak ada part" : clip(parts.slice(0, 3).map((p) => `${p.mpn} (${p.source})`).join(", "))
+    }
+    case "search_footprints": {
+      const found = Array.isArray(result.footprints) ? (result.footprints as string[]) : []
+      return found.length === 0 ? "tidak ada footprint" : clip(found.slice(0, 2).join(", "))
     }
     default:
       return "OK"

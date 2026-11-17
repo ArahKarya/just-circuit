@@ -4,7 +4,8 @@ import { expect, test } from "./fixtures"
 test("imports a JLCPCB part into the project", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
-  await page.getByRole("button", { name: "Impor part JLCPCB" }).click()
+  await page.getByRole("button", { name: "Cari part" }).click()
+  await page.getByRole("button", { name: "Impor dari JLCPCB" }).click()
   const search = page.getByPlaceholder(/Search JLCPCB/i)
   await search.fill("C46749")
   await search.press("Enter")

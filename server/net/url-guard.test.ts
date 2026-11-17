@@ -3,7 +3,7 @@ import { assertPublicHost, hostMatches, isPrivateAddress, parseHttpUrl, readLimi
 
 describe("url guard", () => {
   it("detects private addresses", () => {
-    for (const ip of ["127.0.0.1", "10.1.2.3", "192.168.1.174", "172.20.0.1", "169.254.169.254", "100.101.203.54", "::1", "fd00::1", "::ffff:127.0.0.1"]) {
+    for (const ip of ["127.0.0.1", "10.1.2.3", "192.168.1.174", "172.20.0.1", "169.254.169.254", "100.101.203.54", "::1", "fd00::1", "::ffff:127.0.0.1", "::7f00:1", "64:ff9b::a00:1", "64:ff9b::7f00:1", "2002:7f00:1::", "2001:0:4136:e378::1", "fec0::1", "192.0.2.10", "203.0.113.5", "::ffff:0:a00:1"]) {
       expect(isPrivateAddress(ip), ip).toBe(true)
     }
     for (const ip of ["8.8.8.8", "1.1.1.1", "172.32.0.1", "2606:4700::1111"]) {

@@ -13,6 +13,7 @@ import { llmRouter } from "./routes/llm.js"
 import { migrateRouter } from "./routes/migrate.js"
 import { projectsRouter } from "./routes/projects.js"
 import { libraryRouter } from "./routes/library.js"
+import { partsRouter } from "./routes/parts.js"
 import { memoryRouter } from "./routes/memory.js"
 import { preferencesRouter } from "./routes/preferences.js"
 import { settingsRouter } from "./routes/settings.js"
@@ -91,6 +92,7 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   app.use("/api/projects", express.json({ limit: PROJECT_BODY_LIMIT }), projectsRouter(projects, attachments))
   app.use("/api/workspaces", express.json({ limit: "16kb" }), workspacesRouter(workspaces))
   app.use("/api/trash", trashRouter(projects))
+  app.use("/api/parts", rateLimit(config.jlcRateLimitPerMinute), express.json({ limit: "8kb" }), partsRouter(attachments))
   app.use("/api/library", express.json({ limit: PROJECT_BODY_LIMIT }), libraryRouter(library))
   app.use("/api/memory", express.json({ limit: "64kb" }), memoryRouter(memory))
   app.use("/api/preferences", express.json({ limit: "16kb" }), preferencesRouter(preferences))

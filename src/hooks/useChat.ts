@@ -207,7 +207,7 @@ export function useChat({ project, runStatus, onApplyProject, flush, getProblems
               onToolResult: (event) => updateSteps(steps.map((step) => (step.id === event.id ? { ...step, ok: event.ok, result: event.detail } : step))),
             })
             changed = result.changedFiles
-            await saveMemoryNotes(current.id, result.text, projectMemory, globalMemory, readsAttachments || steps.some((step) => step.name === "search_jlcpcb"))
+            await saveMemoryNotes(current.id, result.text, projectMemory, globalMemory, readsAttachments || steps.some((step) => step.name.startsWith("search_") && step.name !== "search_files"))
             const content = result.truncated ? `${result.text}\n\n(Jawaban terpotong karena batas token.)` : result.text
             await addMessage({
               role: "assistant",

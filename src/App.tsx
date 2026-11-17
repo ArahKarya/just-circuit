@@ -1,12 +1,14 @@
 import type { ManualEditEvent } from "@tscircuit/core"
 import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@tscircuit/runframe/runner"
-import { BookOpen, CircuitBoard, Code2, ListChecks, FolderOpen, History, LogOut, TerminalSquare, MessageSquare, Move, PackagePlus, Settings } from "lucide-react"
+import { BookOpen, CircuitBoard, Code2, ListChecks, FolderOpen, History, LogOut, TerminalSquare, MessageSquare, Move, PackageSearch, Settings } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
 import toast from "react-hot-toast"
 import { skippedLabel, type BuildScope } from "../shared/build-scope"
 import { BuildScopeControls } from "./components/BuildScopeControls"
-import { ChatPanel } from "./components/ChatPanel"
+import { partFilePath, type CatalogPart } from "../shared/parts"
+import { ChatPanel, type ChatDraftRequest } from "./components/ChatPanel"
+import { PartSearchDialog } from "./components/parts/PartSearchDialog"
 import { ProblemsPanel } from "./components/ProblemsPanel"
 import { HistoryDialog } from "./components/history/HistoryDialog"
 import { LibraryDialog } from "./components/library/LibraryDialog"
@@ -33,12 +35,12 @@ import { notifyChange } from "./lib/live-data"
 import { buildFixRequest } from "./lib/system-prompt"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
 import { projectsRepo, TOPICS } from "./lib/repo"
-import { addImportedComponent, withFiles } from "./lib/project-ops"
+import { addComponentFile, addImportedComponent, withFiles } from "./lib/project-ops"
 import { chatConnection, connectionProblem } from "./lib/providers"
-import type { RunStatus } from "./lib/types"
+import type { AttachmentRef, RunStatus } from "./lib/types"
 
 type LeftTab = "chat" | "code" | "problems"
-type DialogName = "settings" | "projects" | "import" | "history" | "library" | null
+type DialogName = "settings" | "projects" | "import" | "parts" | "history" | "library" | null
 
 const STATUS_STYLES: Record<RunStatus["state"], { label: string; className: string }> = {
   idle: { label: "Siap", className: "text-muted" },
@@ -106,6 +108,27 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const currentFile = project && activeFile && project.files[activeFile] !== undefined ? activeFile : project?.entrypoint
 
   const closeDialog = useCallback(() => setDialog(null), [])
+  const [chatDraft, setChatDraft] = useState<ChatDraftRequest | null>(null)
+
+  const addPart = useCallback(
+    async (part: CatalogPart) => {
+      const current = working.project
+      if (!current) return
+      const path = partFilePath(part.componentName)
+      if (current.files[path] !== undefined) throw new Error(`${path} sudah ada di proyek`)
+      const added = addComponentFile(current, path, part.tsx)
+      await working.apply(added.project, `Tambah part ${part.mpn}`)
+      setLeftTab("code")
+      setActiveFile(path)
+      toast.success(`${part.mpn} ditambahkan (${part.pinCount} pin). Pakai <${part.componentName} name="U…" /> di rangkaianmu.`)
+    },
+    [working],
+  )
+
+  const askAiWithDraft = useCallback((text: string, attachments: AttachmentRef[]) => {
+    setChatDraft({ text, attachments, nonce: Date.now() })
+    setLeftTab("chat")
+  }, [])
 
   const handleImport = useCallback(
     async ({ result, tsx }: JlcpcbComponentTsxLoadedPayload) => {
@@ -250,7 +273,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           <Button aria-label="Terminal" onClick={() => setShowTerminal((open) => !open)} aria-pressed={showTerminal} title="Terminal (Ctrl+`)"><TerminalSquare size={15} /><span className="hidden xl:inline">Terminal</span></Button>
           <Button aria-label="Riwayat" onClick={() => setDialog("history")}><History size={15} /><span className="hidden xl:inline">Riwayat</span></Button>
           <Button aria-label="Library" onClick={() => setDialog("library")}><BookOpen size={15} /><span className="hidden xl:inline">Library</span></Button>
-          <Button aria-label="Impor part JLCPCB" onClick={() => setDialog("import")}><PackagePlus size={15} /><span className="hidden xl:inline">Impor part JLCPCB</span></Button>
+          <Button aria-label="Cari part" onClick={() => setDialog("parts")}><PackageSearch size={15} /><span className="hidden xl:inline">Cari part</span></Button>
           <IconButton label="Pengaturan" onClick={() => setDialog("settings")}><Settings size={17} /></IconButton>
           {onLogout && <IconButton label="Keluar" onClick={onLogout}><LogOut size={16} /></IconButton>}
         </div>
@@ -280,6 +303,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
             {leftTab === "chat" ? (
               <ChatPanel
                 projectId={project?.id}
+                draftRequest={chatDraft}
+                onDraftRequestHandled={() => setChatDraft(null)}
                 chat={chat}
                 connection={connection}
                 connectionProblem={problem}
@@ -345,6 +370,9 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
         <SettingsDialog settings={ai.settings} onSaveAi={ai.save} preferences={preferences} project={project} onClose={closeDialog} />
       )}
       {dialog === "projects" && <ProjectsDialog projects={projects} onClose={closeDialog} />}
+      {dialog === "parts" && (
+        <PartSearchDialog projectId={project.id} onClose={closeDialog} onAddPart={addPart} onAskAi={askAiWithDraft} onOpenJlcImport={() => setDialog("import")} />
+      )}
       {dialog === "library" && (
         <LibraryDialog
           project={project}

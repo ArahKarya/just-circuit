@@ -10,6 +10,8 @@ const LABELS: Record<string, string> = {
   delete_file: "Hapus",
   build_circuit: "Build",
   search_jlcpcb: "Cari part JLCPCB",
+  search_parts: "Cari part",
+  search_footprints: "Cari footprint KiCad",
   propose_command: "Usul perintah",
 }
 

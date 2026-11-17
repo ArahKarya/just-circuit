@@ -14,9 +14,18 @@ const PRIVATE_RANGES: ReadonlyArray<[string, number, "ipv4" | "ipv6"]> = [
   ["192.168.0.0", 16, "ipv4"],
   ["198.18.0.0", 15, "ipv4"],
   ["224.0.0.0", 3, "ipv4"], // multicast + reserved
-  ["::", 128, "ipv6"],
-  ["::1", 128, "ipv6"],
+  ["192.0.2.0", 24, "ipv4"], // documentation
+  ["198.51.100.0", 24, "ipv4"],
+  ["203.0.113.0", 24, "ipv4"],
+  ["192.88.99.0", 24, "ipv4"], // 6to4 relay
+  ["::", 96, "ipv6"], // unspecified, loopback and IPv4-compatible (::7f00:1)
+  ["::ffff:0:0:0", 96, "ipv6"], // SIIT (::ffff:0:a.b.c.d)
+  ["64:ff9b::", 96, "ipv6"], // NAT64: reaches IPv4 (also private) through a gateway
+  ["64:ff9b:1::", 48, "ipv6"],
+  ["2001::", 32, "ipv6"], // Teredo
+  ["2002::", 16, "ipv6"], // 6to4
   ["fc00::", 7, "ipv6"],
+  ["fec0::", 10, "ipv6"], // site-local (deprecated)
   ["fe80::", 10, "ipv6"],
   ["ff00::", 8, "ipv6"],
 ]

@@ -75,7 +75,11 @@ export interface ImportedComponent {
  */
 export function addImportedComponent(project: Project, partId: string, tsx: string, now: number = Date.now()): ImportedComponent {
   const safeId = partId.replace(/[^\w-]/g, "_") || "part"
-  const filePath = `imports/${safeId}.tsx`
+  return addComponentFile(project, `imports/${safeId}.tsx`, tsx, now)
+}
+
+/** Writes a component file and imports its first export in the entry file (once). */
+export function addComponentFile(project: Project, filePath: string, tsx: string, now: number = Date.now()): ImportedComponent {
   const componentName = exportedNames(tsx)[0] ?? null
   const entry = project.files[project.entrypoint] ?? ""
   const specifier = importSpecifier(project.entrypoint, filePath)

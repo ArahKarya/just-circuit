@@ -20,6 +20,8 @@ export interface AttachmentDraft {
   items: DraftAttachment[]
   isUploading: boolean
   add: (files: readonly File[]) => void
+  /** Adds files the server already stored (e.g. a datasheet it downloaded). */
+  addReady: (refs: readonly AttachmentRef[]) => void
   remove: (key: string) => void
   /** Attachments ready to send; clears the draft (the uploads now belong to the message). */
   take: () => AttachmentRef[]
@@ -98,6 +100,13 @@ export function useAttachmentDraft(projectId: string | undefined): AttachmentDra
     [upload],
   )
 
+  const addReady = useCallback((refs: readonly AttachmentRef[]) => {
+    const room = MAX_ATTACHMENTS_PER_MESSAGE - itemsRef.current.length
+    if (refs.length > room) toast.error(`Maksimal ${MAX_ATTACHMENTS_PER_MESSAGE} lampiran per pesan`)
+    const added = refs.slice(0, Math.max(0, room)).map((ref): DraftAttachment => ({ key: crypto.randomUUID(), name: ref.name, kind: ref.kind, status: "ready", ref }))
+    if (added.length > 0) setItems((current) => [...current, ...added])
+  }, [])
+
   const remove = useCallback(
     (key: string) => {
       discard(itemsRef.current.filter((item) => item.key === key), true)
@@ -114,5 +123,5 @@ export function useAttachmentDraft(projectId: string | undefined): AttachmentDra
     return ready
   }, [discard])
 
-  return { items, isUploading: items.some((item) => item.status === "uploading"), add, remove, take }
+  return { items, isUploading: items.some((item) => item.status === "uploading"), add, addReady, remove, take }
 }
