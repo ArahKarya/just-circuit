@@ -59,6 +59,7 @@
     "fflate": "^0.8.3",
     "fuse.js": "^7.5.0",
     "jszip": "^3.10.2",
+    "kicad-to-circuit-json": "0.0.149",
     "ky": "^2.2.0",
     "lucide-react": "^1.73.0",
     "marked": "^18.2.0",

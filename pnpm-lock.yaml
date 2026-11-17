@@ -140,6 +140,9 @@ importers:
       jszip:
         specifier: ^3.10.2
         version: 3.10.2
+      kicad-to-circuit-json:
+        specifier: 0.0.149
+        version: 0.0.149(typescript@5.9.3)
       ky:
         specifier: ^2.2.0
         version: 2.2.0
@@ -1586,7 +1589,7 @@ packages:
       typescript: ^5.5.3
 
   '@tscircuit/circuit-json-to-drawing@https://jscdn.tscircuit.com/@tscircuit/circuit-json-to-drawing/0.0.4.tgz':
-    resolution: {tarball: https://jscdn.tscircuit.com/@tscircuit/circuit-json-to-drawing/0.0.4.tgz}
+    resolution: {integrity: sha512-AEw8fBcqaFcVAYXY48DaHA9om20E1FqGBfftKv/jrWgenG5FhJQuLF4j/gOzysB5+1xwZbldvHIDMKoD29XMcA==, tarball: https://jscdn.tscircuit.com/@tscircuit/circuit-json-to-drawing/0.0.4.tgz}
     version: 0.0.4
 
   '@tscircuit/circuit-json-util@0.0.108':

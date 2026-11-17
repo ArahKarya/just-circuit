@@ -151,6 +151,7 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, attac
         enabled: stored.agentServerBuild === true,
         runtimeDir: path.join(config.dataDir, "build-runtime"),
         secretDirs: [config.dataDir],
+        footprintCacheDir: path.join(config.dataDir, "cache", "kicad-footprints"),
         schematicDisabled: body.agent.schematicDisabled,
         routingDisabled: body.agent.routingDisabled,
       },

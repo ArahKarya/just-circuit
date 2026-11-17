@@ -1,8 +1,8 @@
-import { BookmarkPlus, Copy, ExternalLink, FileText, LoaderCircle, PackagePlus, Search } from "lucide-react"
-import { useState, type FormEvent } from "react"
+import { BookmarkPlus, Copy, ExternalLink, FileText, LoaderCircle, PackagePlus, Search, Upload } from "lucide-react"
+import { useRef, useState, type FormEvent } from "react"
 import toast from "react-hot-toast"
 import { formatBytes } from "../../../shared/attachments"
-import { PART_QUERY, PART_SOURCE_LABELS, PART_SOURCES, type CatalogPart, type PartHit, type PartSearchResult, type PartSource } from "../../../shared/parts"
+import { PART_QUERY, PART_SOURCE_LABELS, PART_SOURCES, type CatalogPart, type KicadModPart, type PartHit, type PartSearchResult, type PartSource } from "../../../shared/parts"
 import { attempt } from "../../lib/notify"
 import { catalogMatch, datasheetRequest, kicadQueryFor, partsRepo, supplierKeyFor } from "../../lib/parts"
 import { libraryRepo } from "../../lib/repo"
@@ -18,7 +18,11 @@ interface PartSearchDialogProps {
   onAskAi: (text: string, attachments: AttachmentRef[]) => void
   /** The JLCPCB/EasyEDA importer (symbol, footprint and 3D model in one go). */
   onOpenJlcImport: () => void
+  /** Adds a component made from an uploaded .kicad_mod; partName is what the user called it. */
+  onAddKicadMod: (part: KicadModPart, partName: string) => Promise<void>
 }
+
+const MAX_KICAD_MOD_BYTES = 512 * 1024
 
 /** Links come from outside services: only ever http(s) (the server already filters, this is a second net). */
 const safeLink = (url: string | undefined) => (url && /^https?:\/\//i.test(url) ? url : undefined)
@@ -86,7 +90,9 @@ function HitRow({ hit, catalogChip, busy, onAddFromCatalog, onSaveToLibrary, onF
 }
 
 /** One search over parts catalogs, suppliers and footprint libraries, with a way in for each kind of hit. */
-export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpenJlcImport }: PartSearchDialogProps) {
+export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpenJlcImport, onAddKicadMod }: PartSearchDialogProps) {
+  const kicadInput = useRef<HTMLInputElement>(null)
+  const [kicadPartName, setKicadPartName] = useState("")
   const [query, setQuery] = useState("")
   const [sources, setSources] = useState<ReadonlySet<PartSource>>(new Set(PART_SOURCES))
   const [result, setResult] = useState<PartSearchResult | null>(null)
@@ -136,6 +142,14 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
       ])
       toast.success(`Datasheet ${hit.title} (${formatBytes(attachment.size)}${attachment.pages ? `, ${attachment.pages} hlm` : ""}) dilampirkan`)
       onAskAi(datasheetRequest(hit, footprints), [attachment])
+      onClose()
+    })
+
+  const uploadKicadMod = (file: File) =>
+    void run(async () => {
+      if (file.size > MAX_KICAD_MOD_BYTES) throw new Error(`${file.name} terlalu besar (maksimal 512 KB)`)
+      const part = await partsRepo.convertKicadMod(file.name, await file.text(), kicadPartName.trim())
+      await onAddKicadMod(part, kicadPartName.trim())
       onClose()
     })
 
@@ -228,6 +242,34 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
             </section>
           ))}
         </div>
+        <section aria-label="Footprint KiCad sendiri" className="space-y-1.5 rounded-md border border-dashed border-line p-2.5">
+          <p className="text-xs text-muted">
+            Punya file footprint KiCad (.kicad_mod) dari situs pabrikan, SnapEDA atau Ultra Librarian? Unggah di sini; nama pin bisa diisi AI dari datasheet.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              aria-label="Nomor part untuk footprint"
+              placeholder="Nomor part (mis. ADS8688IDBT)"
+              value={kicadPartName}
+              maxLength={80}
+              onChange={(event) => setKicadPartName(event.target.value)}
+              className="h-9 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-sm focus:border-accent focus:outline-none"
+            />
+            <Button disabled={busy} onClick={() => kicadInput.current?.click()}><Upload size={14} /> Unggah .kicad_mod</Button>
+            <input
+              ref={kicadInput}
+              type="file"
+              accept=".kicad_mod"
+              hidden
+              data-testid="kicad-mod-input"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ""
+                if (file) uploadKicadMod(file)
+              }}
+            />
+          </div>
+        </section>
         <p className="text-xs text-muted">
           Sudah punya nomor LCSC (C…)?{" "}
           <button type="button" className="underline hover:text-ink" onClick={onOpenJlcImport}>Impor dari JLCPCB</button>{" "}

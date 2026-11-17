@@ -60,6 +60,17 @@ export interface CatalogPart {
 /** Names the generated file imports or that would shadow a JavaScript global. */
 const RESERVED_NAMES = new Set(["ChipProps", "React", "Object", "Array", "Date", "Map", "Set", "Math", "JSON", "Number", "String", "Boolean", "Symbol", "Promise", "Error", "Function", "Infinity", "NaN", "Proxy", "Reflect"])
 
+/** A component made from an uploaded KiCad footprint (.kicad_mod). */
+export interface KicadModPart {
+  componentName: string
+  footprintName: string
+  padCount: number
+  /** lib/parts/<Name>.tsx and lib/parts/<Name>.footprint.json. */
+  files: Record<string, string>
+  tsxPath: string
+  warnings: string[]
+}
+
 /** PascalCase component name from a part number: "ADS8688IDBT" -> "ADS8688IDBT", "74hc595-q1" -> "Part74hc595Q1". */
 export function componentNameFor(mpn: string): string {
   const words = mpn.split(/[^A-Za-z0-9]+/).filter(Boolean)

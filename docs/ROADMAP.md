@@ -76,5 +76,5 @@ Rencana awal:
 - [x] Lampiran di chat: gambar (diperkecil di browser), PDF (utuh ke Claude/Gemini sampai 20 halaman, selain itu teks per halaman lewat `unpdf`), file teks/netlist/KiCad; klip, seret, tempel screenshot; disimpan di `.cds/attachments/`, dihapus bersama chat.
 - [x] Board besar: tombol Skematik/Routing per proyek (platformConfig `schematicDisabled`/`routingDisabled` untuk preview, runner bun + core untuk build agen), daftar masalah build terakhir dikirim ke AI.
 - [x] Cari part multi-sumber (katalog datasheet, JLCPCB/LCSC, TI, DigiKey, Mouser, KiCad, registry): tambah dari katalog, simpan ke Library, "Buat dari datasheet" (server unduh PDF ke chat), tool agen search_parts/search_footprints.
-- [ ] Footprint `kicad:` di build agen (server tanpa internet: unduh footprint di luar sandbox dulu).
-- [ ] Unggah `.kicad_mod` (pabrikan/SnapEDA/Ultra Librarian) → komponen.
+- [x] Footprint `kicad:` di build agen: diunduh di luar sandbox ke cache disk, runner memakainya lewat footprintLibraryMap.
+- [x] Unggah `.kicad_mod` (pabrikan/SnapEDA/Ultra Librarian) → komponen + footprint JSON, chat disiapkan untuk nama pin.

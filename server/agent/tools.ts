@@ -14,7 +14,7 @@ export interface AgentContext {
   projectId: string
   store: ProjectStore
   /** Server builds are opt-in; otherwise the browser preview checks the result. */
-  serverBuild: { enabled: boolean; runtimeDir: string; secretDirs: string[] } & BuildScope
+  serverBuild: { enabled: boolean; runtimeDir: string; secretDirs: string[]; footprintCacheDir: string } & BuildScope
   signal: AbortSignal
   /** Keeps the stream's idle timer alive during slow tools (builds). */
   keepAlive: () => void

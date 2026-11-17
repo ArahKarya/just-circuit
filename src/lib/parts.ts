@@ -1,4 +1,4 @@
-import { componentNameFor, partFilePath, type CatalogPart, type PartHit, type PartSearchResult, type PartSource, type SupplierKey } from "../../shared/parts"
+import { componentNameFor, partFilePath, type CatalogPart, type KicadModPart, type PartHit, type PartSearchResult, type PartSource, type SupplierKey } from "../../shared/parts"
 import { api } from "./api"
 import type { AttachmentRef } from "./types"
 
@@ -8,6 +8,8 @@ export const partsRepo = {
   catalog: (chip: string, supplier?: SupplierKey, supplierPartNumber?: string) =>
     api.get<CatalogPart>(`/api/parts/catalog?${new URLSearchParams({ chip, ...(supplier && supplierPartNumber ? { supplier, spn: supplierPartNumber } : {}) })}`),
   footprints: (q: string) => api.get<string[]>(`/api/parts/footprints?${new URLSearchParams({ q })}`),
+  /** Converts an uploaded KiCad footprint into a component (nothing is stored yet). */
+  convertKicadMod: (fileName: string, content: string, partName: string) => api.post<KicadModPart>("/api/parts/kicad-mod", { fileName, content, partName }),
   /** The server downloads the PDF and stores it as a chat attachment of the project. */
   fetchDatasheet: (projectId: string, url: string, name: string) => api.post<AttachmentRef>("/api/parts/datasheet", { projectId, url, name }),
 }
@@ -42,6 +44,14 @@ export function kicadQueryFor(pkg: string | undefined): string | null {
 export function catalogMatch(hit: PartHit, catalogChips: readonly string[]): string | null {
   const title = hit.title.toLowerCase()
   return catalogChips.find((chip) => title === chip.toLowerCase()) ?? null
+}
+
+/** Chat request to replace the pad numbers of an uploaded footprint with the datasheet's pin names. */
+export function pinNamesRequest(part: KicadModPart, partName: string): string {
+  return [
+    `Komponen ${part.componentName} di ${part.tsxPath} memakai footprint KiCad yang saya unggah (${part.padCount} pad); nama pinnya masih P1, P2, ….`,
+    `Ganti pinLabels dengan nama pin dari datasheet ${partName || part.componentName} (saya lampirkan datasheet-nya), tambahkan manufacturerPartNumber, dan jangan ubah file .footprint.json.`,
+  ].join("\n")
 }
 
 /** Chat request that has the AI build a part component from its attached datasheet. */

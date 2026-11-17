@@ -92,7 +92,8 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   app.use("/api/projects", express.json({ limit: PROJECT_BODY_LIMIT }), projectsRouter(projects, attachments))
   app.use("/api/workspaces", express.json({ limit: "16kb" }), workspacesRouter(workspaces))
   app.use("/api/trash", trashRouter(projects))
-  app.use("/api/parts", rateLimit(config.jlcRateLimitPerMinute), express.json({ limit: "8kb" }), partsRouter(attachments))
+  // Room for one uploaded .kicad_mod (512 KB of text); everything else is a small JSON body.
+  app.use("/api/parts", rateLimit(config.jlcRateLimitPerMinute), express.json({ limit: "600kb" }), partsRouter(attachments))
   app.use("/api/library", express.json({ limit: PROJECT_BODY_LIMIT }), libraryRouter(library))
   app.use("/api/memory", express.json({ limit: "64kb" }), memoryRouter(memory))
   app.use("/api/preferences", express.json({ limit: "16kb" }), preferencesRouter(preferences))

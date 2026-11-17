@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import toast from "react-hot-toast"
 import { skippedLabel, type BuildScope } from "../shared/build-scope"
 import { BuildScopeControls } from "./components/BuildScopeControls"
-import { partFilePath, type CatalogPart } from "../shared/parts"
+import { partFilePath, type CatalogPart, type KicadModPart } from "../shared/parts"
 import { ChatPanel, type ChatDraftRequest } from "./components/ChatPanel"
 import { PartSearchDialog } from "./components/parts/PartSearchDialog"
 import { ProblemsPanel } from "./components/ProblemsPanel"
@@ -32,6 +32,7 @@ import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
 import { buildIssues, extractIssues, locateComponent, type DesignIssue } from "./lib/drc"
 import { notifyChange } from "./lib/live-data"
+import { pinNamesRequest } from "./lib/parts"
 import { buildFixRequest } from "./lib/system-prompt"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
 import { projectsRepo, TOPICS } from "./lib/repo"
@@ -129,6 +130,22 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
     setChatDraft({ text, attachments, nonce: Date.now() })
     setLeftTab("chat")
   }, [])
+
+  const addKicadMod = useCallback(
+    async (part: KicadModPart, partName: string) => {
+      const current = working.project
+      if (!current) return
+      const taken = Object.keys(part.files).find((path) => current.files[path] !== undefined)
+      if (taken) throw new Error(`${taken} sudah ada di proyek; isi nomor part lain`)
+      const { [part.tsxPath]: tsx, ...rest } = part.files
+      const added = addComponentFile(withFiles(current, rest), part.tsxPath, tsx)
+      await working.apply(added.project, `Tambah footprint KiCad ${part.footprintName}`)
+      toast.success(`${part.componentName} ditambahkan (${part.padCount} pad). Nama pin masih P1, P2, …; permintaan untuk AI sudah ada di chat.`)
+      // The pin names come from the datasheet: prepare the request, the user attaches the PDF and sends.
+      askAiWithDraft(pinNamesRequest(part, partName), [])
+    },
+    [working, askAiWithDraft],
+  )
 
   const handleImport = useCallback(
     async ({ result, tsx }: JlcpcbComponentTsxLoadedPayload) => {
@@ -371,7 +388,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
       )}
       {dialog === "projects" && <ProjectsDialog projects={projects} onClose={closeDialog} />}
       {dialog === "parts" && (
-        <PartSearchDialog projectId={project.id} onClose={closeDialog} onAddPart={addPart} onAskAi={askAiWithDraft} onOpenJlcImport={() => setDialog("import")} />
+        <PartSearchDialog projectId={project.id} onClose={closeDialog} onAddPart={addPart} onAskAi={askAiWithDraft} onOpenJlcImport={() => setDialog("import")} onAddKicadMod={addKicadMod} />
       )}
       {dialog === "library" && (
         <LibraryDialog

@@ -7,7 +7,8 @@ import { platformConfigFor, skippedLabel, type BuildScope } from "../../shared/b
 import { isEditablePath } from "../../shared/project-paths.js"
 import { logger } from "../logger.js"
 import { shellEnv } from "../terminal/terminal-server.js"
-import { RUNNER_FILE, RUNNER_SOURCE } from "./build-runner.js"
+import { FOOTPRINTS_FILE, RUNNER_FILE, RUNNER_SOURCE } from "./build-runner.js"
+import { kicadFootprintsIn, prepareKicadFootprints } from "./kicad-footprints.js"
 
 export interface BuildReport {
   ok: boolean
@@ -24,6 +25,8 @@ export interface BuildOptions extends BuildScope {
   runtimeDir: string
   /** Folders a sandboxed build must never read (data dir, home). */
   secretDirs: string[]
+  /** Where KiCad footprints fetched for builds are kept (outside the sandbox). */
+  footprintCacheDir?: string
   keepAlive: () => void
   signal?: AbortSignal
 }
@@ -187,6 +190,12 @@ async function buildOnce(files: Record<string, string>, entrypoint: string, opti
     }
     await writeFile(path.join(workDir, "package.json"), "{}\n")
     await writeFile(path.join(workDir, RUNNER_FILE), RUNNER_SOURCE)
+    // kicad: footprints are fetched here, with network, and handed to the offline runner.
+    const kicadNames = kicadFootprintsIn(files)
+    if (kicadNames.length > 0 && options.footprintCacheDir) {
+      const { footprints } = await prepareKicadFootprints(kicadNames, options.footprintCacheDir)
+      await writeFile(path.join(workDir, FOOTPRINTS_FILE), JSON.stringify(footprints))
+    }
     await symlink(path.join(await realpath(options.runtimeDir), "node_modules"), path.join(workDir, "node_modules"))
     await mkdir(path.join(workDir, ".home"))
     await mkdir(path.join(workDir, ".tmp"))

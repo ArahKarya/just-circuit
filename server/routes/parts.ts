@@ -7,6 +7,7 @@ import { errorMessage, logger } from "../logger.js"
 import { UrlGuardError } from "../net/url-guard.js"
 import { rateLimit } from "../middleware/rate-limit.js"
 import { getCatalogPart } from "../parts/catalog.js"
+import { convertKicadMod, MAX_KICAD_MOD_CHARS } from "../parts/kicad-mod.js"
 import { downloadPublicFile } from "../parts/download.js"
 import { searchKicadFootprints, searchParts } from "../parts/sources.js"
 import type { AttachmentStore } from "../storage/attachments.js"
@@ -47,6 +48,12 @@ async function upstream<T>(res: Response, task: () => Promise<T>): Promise<void>
     sendError(res, 502, `Sumber part tidak bisa dihubungi: ${error instanceof Error ? error.message.slice(0, 200) : "gagal"}`)
   }
 }
+
+const kicadModSchema = z.object({
+  fileName: z.string().trim().min(1).max(200).regex(/\.kicad_mod$/i, "Pilih file .kicad_mod"),
+  partName: z.string().trim().max(80).optional(),
+  content: z.string().min(1).max(MAX_KICAD_MOD_CHARS, "File .kicad_mod terlalu besar (maksimal 512 KB)"),
+})
 
 function parseQuery<T extends z.ZodTypeAny>(schema: T, input: unknown): z.output<T> {
   const parsed = schema.safeParse(input)
@@ -94,6 +101,12 @@ export function partsRouter(attachments: AttachmentStore): Router {
     }
     const name = body.name.replace(/[^\w .,\-+#()%]+/g, "-").replace(/\s+/g, " ").trim() || "part"
     sendData(res, await attachments.add(body.projectId, `${name} datasheet.pdf`, bytes), 201)
+  }))
+
+  // A footprint file the user downloaded (manufacturer, SnapEDA, Ultra Librarian) becomes a component.
+  r.post("/kicad-mod", lookupLimit, handle(async (req, res) => {
+    const body = parseBody(kicadModSchema, req, res)
+    if (body) sendData(res, convertKicadMod(body.content, body.fileName, body.partName))
   }))
 
   return r
