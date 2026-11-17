@@ -17,6 +17,7 @@ import { memoryRouter } from "./routes/memory.js"
 import { preferencesRouter } from "./routes/preferences.js"
 import { settingsRouter } from "./routes/settings.js"
 import { trashRouter, workspacesRouter } from "./routes/workspaces.js"
+import { createAttachmentStore } from "./storage/attachments.js"
 import type { ProjectStore } from "./storage/projects.js"
 import type { GlobalMemoryStore } from "./storage/global-memory.js"
 import type { LibraryStore } from "./storage/library.js"
@@ -54,6 +55,7 @@ function serveClient(app: express.Express): void {
 
 export function createApp({ auth, projects, settings, workspaces, preferences, memory, library }: AppDeps): express.Express {
   const app = express()
+  const attachments = createAttachmentStore(projects)
   app.disable("x-powered-by")
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff")
@@ -85,8 +87,8 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   })
   app.use("/api/jlc", rateLimit(config.jlcRateLimitPerMinute), jlcRouter())
   app.use("/api", auth.requireCsrfHeader)
-  app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter(settings, projects))
-  app.use("/api/projects", express.json({ limit: PROJECT_BODY_LIMIT }), projectsRouter(projects))
+  app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter(settings, projects, attachments))
+  app.use("/api/projects", express.json({ limit: PROJECT_BODY_LIMIT }), projectsRouter(projects, attachments))
   app.use("/api/workspaces", express.json({ limit: "16kb" }), workspacesRouter(workspaces))
   app.use("/api/trash", trashRouter(projects))
   app.use("/api/library", express.json({ limit: PROJECT_BODY_LIMIT }), libraryRouter(library))
@@ -101,6 +103,12 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   if (config.isProduction) serveClient(app)
 
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    // Body parser errors (too large, malformed JSON) are the client's fault and carry their status.
+    const status = (error as { status?: unknown }).status
+    if (typeof status === "number" && status >= 400 && status < 500 && !res.headersSent) {
+      res.status(status).json({ success: false, error: status === 413 ? "Data terlalu besar" : "Permintaan tidak valid" })
+      return
+    }
     logger.error("unhandled error", { error: errorMessage(error) })
     if (!res.headersSent) res.status(500).json({ success: false, error: "Terjadi kesalahan di server" })
   })

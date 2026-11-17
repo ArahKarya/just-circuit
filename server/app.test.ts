@@ -16,6 +16,7 @@ import { createGlobalMemoryStore } from "./storage/global-memory"
 import { createLibraryStore } from "./storage/library"
 import { createPreferencesStore } from "./storage/preferences"
 import { createWorkspaceStore } from "./storage/workspaces"
+import { TINY_PNG } from "./test-fixtures/make-pdf"
 
 const PASSWORD = "kata-sandi-uji-123"
 let dataDir: string
@@ -82,5 +83,49 @@ describe("API with a password", () => {
   it("refuses login without the CSRF header", async () => {
     const response = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: PASSWORD }) })
     expect(response.status).toBe(403)
+  })
+})
+
+describe("chat attachments", () => {
+  it("uploads raw bytes, serves them safely and removes them with the chat", async () => {
+    const login = await fetch(`${base}/api/auth/login`, { method: "POST", headers: csrf, body: JSON.stringify({ password: PASSWORD }) })
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]
+    const json = { ...csrf, cookie }
+    const created = await (await fetch(`${base}/api/projects`, { method: "POST", headers: json, body: JSON.stringify({ name: "Lampiran", entrypoint: "index.circuit.tsx", files: { "index.circuit.tsx": "1" } }) })).json()
+    const url = `${base}/api/projects/${created.data.id}/attachments`
+    const upload = (body: Buffer, name: string, headers: Record<string, string> = {}) =>
+      fetch(url, { method: "POST", headers: { cookie, "X-CDS-Request": "1", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(name), ...headers }, body: new Uint8Array(body) })
+
+    expect((await upload(TINY_PNG, "skema.png", { "X-CDS-Request": "" })).status).toBe(403)
+    const bad = await upload(Buffer.from("<svg onload=alert(1)>"), "x.svg")
+    expect(bad.status).toBe(400)
+
+    const uploaded = await upload(TINY_PNG, "skema rangkaian.png")
+    expect(uploaded.status).toBe(201)
+    const meta = (await uploaded.json()).data
+    expect(meta).toMatchObject({ name: "skema rangkaian.png", kind: "image", mediaType: "image/png" })
+
+    const served = await fetch(`${url}/${meta.id}`, { headers: { cookie } })
+    expect(served.headers.get("content-type")).toBe("image/png")
+    expect(served.headers.get("content-security-policy")).toContain("sandbox")
+    expect(served.headers.get("content-disposition")).toContain("inline; filename*=UTF-8''skema%20rangkaian.png")
+    expect(Buffer.from(await served.arrayBuffer()).equals(TINY_PNG)).toBe(true)
+    expect((await fetch(`${url}/${meta.id}`)).status).toBe(401)
+
+    const text = (await (await upload(Buffer.from("R1 1k"), "bom.csv")).json()).data
+    expect((await fetch(`${url}/${text.id}`, { headers: { cookie } })).headers.get("content-disposition")).toMatch(/^attachment/)
+
+    const tooBig = await upload(Buffer.alloc(3 * 1024 * 1024, 0x61), "besar.txt")
+    expect(tooBig.status).toBe(413)
+    expect((await tooBig.json()).error).toMatch(/File teks terlalu besar/)
+
+    // The message keeps what the server knows about the file, not what the browser claims.
+    const fake = { ...meta, name: "palsu.exe", size: 1 }
+    const unknown = { ...meta, id: "00000000-0000-0000-0000-000000000000" }
+    const posted = await fetch(`${base}/api/projects/${created.data.id}/messages`, { method: "POST", headers: json, body: JSON.stringify({ id: "m1", role: "user", content: "lihat", createdAt: 1, attachments: [fake, unknown] }) })
+    expect((await posted.json()).data.attachments).toEqual([{ id: meta.id, name: "skema rangkaian.png", kind: "image", mediaType: "image/png", size: TINY_PNG.length }])
+    expect((await fetch(`${url}/${meta.id}`, { method: "DELETE", headers: json })).status).toBe(400)
+    expect((await fetch(`${base}/api/projects/${created.data.id}/messages`, { method: "DELETE", headers: json })).status).toBe(200)
+    expect((await fetch(`${url}/${meta.id}`, { headers: { cookie } })).status).toBe(404)
   })
 })

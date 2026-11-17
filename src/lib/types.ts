@@ -1,3 +1,7 @@
+import type { AttachmentRef } from "../../shared/attachments"
+
+export type { AttachmentRef }
+
 export type ProviderKind = "openai-compatible" | "anthropic" | "gemini"
 
 /** "auto" sends temperature unless the model is known to reject it. */
@@ -120,6 +124,8 @@ export interface ChatMessage {
   isError?: boolean
   /** Agent mode: the tools the AI used for this answer. */
   toolSteps?: ToolStep[]
+  /** Files the user attached (images, PDFs, text); stored on the server with the project. */
+  attachments?: AttachmentRef[]
 }
 
 export interface ToolStep {

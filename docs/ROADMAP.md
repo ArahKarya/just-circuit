@@ -73,3 +73,4 @@ Rencana awal:
 - [x] Hasil agen dicek preview browser dan error dikirim balik otomatis; build di server opsional dan di dalam sandbox (sandbox-exec / bwrap, tanpa jaringan, home tidak terbaca, salinan sementara).
 - [x] AI mengusulkan perintah terminal; hanya ditempel ke terminal setelah diklik, Enter ditekan pengguna sendiri.
 - [x] Panel DRC/ERC (tab "Masalah"): error/peringatan PCB, skematik dan rangkaian dari circuit JSON, saring, klik nama komponen untuk loncat ke deklarasinya di kode, "Minta AI perbaiki". Status build di header membuka panel ini.
+- [x] Lampiran di chat: gambar (diperkecil di browser), PDF (utuh ke Claude/Gemini sampai 20 halaman, selain itu teks per halaman lewat `unpdf`), file teks/netlist/KiCad; klip, seret, tempel screenshot; disimpan di `.cds/attachments/`, dihapus bersama chat.

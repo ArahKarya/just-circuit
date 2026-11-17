@@ -2,7 +2,7 @@
   "name": "cds",
   "version": "0.1.0",
   "private": true,
-  "description": "Circuit Design Studio \u2014 tscircuit in the browser with an AI assistant",
+  "description": "Circuit Design Studio — tscircuit in the browser with an AI assistant",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,api -c cyan,magenta \"vite\" \"tsx watch server/index.ts\"",
@@ -72,6 +72,7 @@
     "react-query": "^3.39.3",
     "tailwind-merge": "^3.7.0",
     "typescript": "^5.9.3",
+    "unpdf": "2.2.1",
     "ws": "^8.23.0",
     "zod": "^3.25.76",
     "zustand": "^5.1.0"

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto"
 import { mkdir, readdir, readFile, rename, rm } from "node:fs/promises"
 import path from "node:path"
+import type { AttachmentRef } from "../../shared/attachments.js"
 import { ConflictError, NotFoundError } from "./errors.js"
 import { createKeyedLock, isDirectory, isRegularFile, readOwnJson, writeFileAtomic, writeJsonFile } from "./fs-utils.js"
 import { InvalidPathError, isEditablePath, listEditableFiles, readEditableFiles, syncEditableFiles, type FileMap } from "./project-files.js"
@@ -43,6 +44,8 @@ export interface ChatMessageRecord {
   previousFiles?: FileMap
   isError?: boolean
   toolSteps?: { name: string; detail: string; ok?: boolean; result?: string }[]
+  /** Files the user attached to this message (stored in .cds/attachments). */
+  attachments?: AttachmentRef[]
 }
 
 export interface NewProject {
@@ -429,7 +432,10 @@ export function createProjectStore(dataDir: string) {
   /** Folder of a project on disk (the terminal starts there). */
   const pathOf = (id: string): Promise<string> => locate(id)
 
-  return { pathOf, readMemory, writeMemory, list, get, create, update, remove, move, versions, diffOf, saveVersion, restoreVersion, listTrash, restore, purge, purgeOlderThan, messages, changeMessages, workspacesDir }
+  /** Runs a task on the project folder under the project lock, so a move or trash can't happen meanwhile. */
+  const withProject = <T>(id: string, task: (dir: string) => Promise<T>): Promise<T> => withLock(id, async () => task(await locate(id)))
+
+  return { pathOf, withProject, readMemory, writeMemory, list, get, create, update, remove, move, versions, diffOf, saveVersion, restoreVersion, listTrash, restore, purge, purgeOlderThan, messages, changeMessages, workspacesDir }
 }
 
 export type ProjectStore = ReturnType<typeof createProjectStore>

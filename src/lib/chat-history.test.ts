@@ -29,4 +29,11 @@ describe("toTurns", () => {
   it("never sends an empty assistant turn", () => {
     expect(toTurns([message("assistant", "```tsx file=a.tsx\nx\n```")])[0].content).toBe("[kode: a.tsx]")
   })
+
+  it("sends attachment ids with user turns only", () => {
+    const ref = { id: "a1", name: "skema.png", kind: "image" as const, mediaType: "image/png", size: 1 }
+    const turns = toTurns([message("user", "lihat", { attachments: [ref] }), message("assistant", "ok")])
+    expect(turns[0]).toEqual({ role: "user", content: "lihat", attachments: ["a1"] })
+    expect(turns[1]).toEqual({ role: "assistant", content: "ok" })
+  })
 })

@@ -13,5 +13,9 @@ export function toTurns(messages: readonly ChatMessage[], limit: number = HISTOR
   return messages
     .filter((m) => !m.isError)
     .slice(-limit)
-    .map((m) => ({ role: m.role, content: m.role === "assistant" ? stripCodeBlocks(m.content).trim() || "(kode diterapkan)" : m.content }))
+    .map((m) =>
+      m.role === "assistant"
+        ? { role: m.role, content: stripCodeBlocks(m.content).trim() || "(kode diterapkan)" }
+        : { role: m.role, content: m.content, ...(m.attachments?.length ? { attachments: m.attachments.map((a) => a.id) } : {}) },
+    )
 }

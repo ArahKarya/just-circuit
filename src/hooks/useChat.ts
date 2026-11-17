@@ -10,7 +10,8 @@ import { chatConnection, connectionProblem, DEFAULT_AI_SETTINGS, DEFAULT_HISTORY
 import { changesFromReply } from "../lib/reply-changes"
 import { libraryRepo, memoryRepo, messagesRepo, projectsRepo, settingsRepo, TOPICS } from "../lib/repo"
 import { buildAgentSystemPrompt, buildEditFailureRequest, buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
-import type { ChatMessage, Project, RunStatus, ToolStep } from "../lib/types"
+import type { AttachmentRef, ChatMessage, Project, RunStatus, ToolStep } from "../lib/types"
+import type { ChatTurn } from "../lib/llm-client"
 
 const REASONING_TAIL = 600
 const NO_MESSAGES: ChatMessage[] = []
@@ -48,15 +49,25 @@ export interface ChatState {
   autoFixRemaining: number
   /** Agent mode: tools used so far in the current answer. */
   toolSteps: LiveToolStep[]
-  send: (text: string) => Promise<void>
+  send: (text: string, attachments?: AttachmentRef[]) => Promise<void>
   stop: () => void
   undo: (message: ChatMessage) => Promise<void>
   clear: () => Promise<void>
 }
 
-/** Stores notes the AI asked to remember; failures are reported but never block the reply. */
-async function saveMemoryNotes(projectId: string, reply: string, projectMemory: string, globalMemory: string): Promise<void> {
+/**
+ * Stores notes the AI asked to remember; failures are reported but never block the reply.
+ * When the AI read outside text (part catalogs, attached files) that text could plant notes, so
+ * nothing is stored automatically.
+ */
+async function saveMemoryNotes(projectId: string, reply: string, projectMemory: string, globalMemory: string, readOutsideText: boolean): Promise<void> {
   const notes = extractMemoryNotes(reply)
+  if (readOutsideText) {
+    if (notes.project.length + notes.global.length > 0) {
+      toast("Catatan memori dari jawaban ini tidak disimpan otomatis (AI membaca lampiran atau data part dari luar). Salin manual kalau perlu.", { icon: "ℹ️" })
+    }
+    return
+  }
   try {
     const nextProject = appendMemory(projectMemory, notes.project)
     const nextGlobal = appendMemory(globalMemory, notes.global)
@@ -118,7 +129,7 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
   )
 
   const run = useCallback(
-    async (text: string, isAutoFix: boolean): Promise<boolean> => {
+    async (text: string, isAutoFix: boolean, attachments: readonly AttachmentRef[] = []): Promise<boolean> => {
       const current = projectRef.current
       if (!current || busyRef.current) return false
       busyRef.current = true
@@ -139,7 +150,7 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
           libraryRepo.list().catch(() => []),
         ])
         const settings = { ...DEFAULT_AI_SETTINGS, ...stored }
-        await addMessage({ role: "user", content: text })
+        await addMessage({ role: "user", content: text, ...(attachments.length > 0 ? { attachments: [...attachments] } : {}) })
         const connection = chatConnection(settings, current.settings, isAutoFix)
         const problem = connectionProblem(connection)
         if (problem || !connection) {
@@ -151,6 +162,10 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
         const controller = new AbortController()
         abortRef.current = controller
         const promptContext = { projectRules: current.settings?.aiRules, projectMemory, globalMemory, library: describeLibrary(library) }
+        const currentTurn: ChatTurn = { role: "user", content: text, ...(attachments.length > 0 ? { attachments: attachments.map((a) => a.id) } : {}) }
+        const turns = [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), currentTurn]
+        // Once a chat holds attachments, any later reply may echo them: memory is never saved automatically there.
+        const readsAttachments = attachments.length > 0 || history.some((m) => (m.attachments?.length ?? 0) > 0)
 
         if (settings.agentMode) {
           await flush()
@@ -164,7 +179,8 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
             const result = await streamChat({
               connection,
               system: buildAgentSystemPrompt(current.files, current.entrypoint, promptContext),
-              messages: [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), { role: "user", content: text }],
+              messages: turns,
+              projectId: current.id,
               temperature: temperatureFor(connection, settings.temperature),
               maxOutputTokens: settings.maxOutputTokens,
               signal: controller.signal,
@@ -175,14 +191,7 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
               onToolResult: (event) => updateSteps(steps.map((step) => (step.id === event.id ? { ...step, ok: event.ok, result: event.detail } : step))),
             })
             changed = result.changedFiles
-            // Text from outside (part catalogs) could plant instructions: don't store memory from such runs.
-            if (steps.some((step) => step.name === "search_jlcpcb")) {
-              if (extractMemoryNotes(result.text).project.length + extractMemoryNotes(result.text).global.length > 0) {
-                toast("Catatan memori dari jawaban ini tidak disimpan otomatis (AI membaca data part dari luar). Salin manual kalau perlu.", { icon: "ℹ️" })
-              }
-            } else {
-              await saveMemoryNotes(current.id, result.text, projectMemory, globalMemory)
-            }
+            await saveMemoryNotes(current.id, result.text, projectMemory, globalMemory, readsAttachments || steps.some((step) => step.name === "search_jlcpcb"))
             const content = result.truncated ? `${result.text}\n\n(Jawaban terpotong karena batas token.)` : result.text
             await addMessage({
               role: "assistant",
@@ -210,7 +219,8 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
         const result = await streamChat({
           connection,
           system: buildSystemPrompt(current.files, current.entrypoint, promptContext),
-          messages: [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), { role: "user", content: text }],
+          messages: turns,
+          projectId: current.id,
           temperature: temperatureFor(connection, settings.temperature),
           maxOutputTokens: settings.maxOutputTokens,
           signal: controller.signal,
@@ -220,7 +230,7 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
         const content = result.truncated
           ? `${result.text}\n\n(Jawaban terpotong karena batas token. Naikkan "Maks token jawaban" di Pengaturan.)`
           : result.text
-        await saveMemoryNotes(current.id, result.text, projectMemory, globalMemory)
+        await saveMemoryNotes(current.id, result.text, projectMemory, globalMemory, readsAttachments)
         const { changes, failures } = changesFromReply(result.text, current.files, current.entrypoint)
         const paths = Object.keys(changes)
         const note = failures.length > 0 ? `\n\n(Edit gagal diterapkan:\n${failures.map((f) => `- ${f}`).join("\n")})` : ""
@@ -254,8 +264,8 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
   )
 
   const send = useCallback(
-    async (text: string) => {
-      await run(text, false)
+    async (text: string, attachments: AttachmentRef[] = []) => {
+      await run(text, false, attachments)
     },
     [run],
   )

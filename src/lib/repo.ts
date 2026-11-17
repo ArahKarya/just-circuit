@@ -1,7 +1,7 @@
 import { api } from "./api"
 import type { LibraryItem, LibraryItemWithFiles } from "./library"
 import { notifyChange } from "./live-data"
-import type { AiSettings, ChatMessage, Connection, Preferences, Project, ProjectFiles, ProjectSettings, ProjectSummary, TrashEntry, Version, Workspace } from "./types"
+import type { AiSettings, AttachmentRef, ChatMessage, Connection, Preferences, Project, ProjectFiles, ProjectSettings, ProjectSummary, TrashEntry, Version, Workspace } from "./types"
 
 export const TOPICS = {
   projects: "projects",
@@ -159,6 +159,25 @@ export interface MessagePatch {
   appliedFiles?: string[]
   /** null removes the undo snapshot. */
   previousFiles?: ProjectFiles | null
+}
+
+export const attachmentsRepo = {
+  url: (projectId: string, attachmentId: string) => `${projectUrl(projectId)}/attachments/${encodeURIComponent(attachmentId)}`,
+  /** Sends the raw file; the name goes URI-encoded in a header. */
+  async upload(projectId: string, file: Blob, name: string, signal?: AbortSignal): Promise<AttachmentRef> {
+    const response = await fetch(`${projectUrl(projectId)}/attachments`, {
+      method: "POST",
+      signal,
+      credentials: "same-origin",
+      headers: { "X-CDS-Request": "1", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(name) },
+      body: file,
+    })
+    const body = (await response.json().catch(() => null)) as { success?: boolean; data?: AttachmentRef; error?: string } | null
+    if (response.status === 413) throw new Error(`"${name}" terlalu besar untuk diunggah`)
+    if (!response.ok || !body?.success || !body.data) throw new Error(body?.error ?? `Gagal mengunggah "${name}" (HTTP ${response.status})`)
+    return body.data
+  },
+  remove: (projectId: string, attachmentId: string) => api.delete<null>(`${projectUrl(projectId)}/attachments/${encodeURIComponent(attachmentId)}`),
 }
 
 export const messagesRepo = {

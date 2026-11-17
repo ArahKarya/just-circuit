@@ -4,12 +4,16 @@ import type { Connection } from "./types"
 export interface ChatTurn {
   role: "user" | "assistant"
   content: string
+  /** Ids of files attached to this turn; the server reads them from the project. */
+  attachments?: string[]
 }
 
 export interface ChatRequest {
   connection: Connection
   system: string
   messages: ChatTurn[]
+  /** Project the attachments in `messages` belong to. */
+  projectId?: string
   /** Undefined leaves temperature out of the request. */
   temperature: number | undefined
   maxOutputTokens: number
@@ -76,6 +80,7 @@ export async function streamChat(request: ChatRequest): Promise<ChatResult> {
       connectionId: request.connection.id,
       system: request.system,
       messages: request.messages,
+      projectId: request.projectId,
       temperature: request.temperature,
       maxOutputTokens: request.maxOutputTokens,
       agent: request.agent,

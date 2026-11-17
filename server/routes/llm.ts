@@ -3,7 +3,9 @@ import path from "node:path"
 import { generateText, stepCountIs, streamText, type ToolSet } from "ai"
 import { createAgentTools, type AgentContext } from "../agent/tools.js"
 import { describeToolCall, describeToolResult } from "../agent/summary.js"
+import type { AttachmentStore } from "../storage/attachments.js"
 import type { ProjectStore } from "../storage/projects.js"
+import { buildModelMessages, hasAttachments } from "../llm/attachment-parts.js"
 import { config } from "../config.js"
 import { errorMessage, logger } from "../logger.js"
 import { describeProviderError } from "../llm/errors.js"
@@ -47,7 +49,24 @@ function sendError(res: Response, status: number, message: string): void {
   res.status(status).json({ success: false, error: message })
 }
 
-async function handleChat(settings: SettingsStore, projects: ProjectStore, req: Request, res: Response): Promise<void> {
+const ATTACHMENT_HINT = " Kalau ini karena lampiran: pastikan modelnya bisa membaca gambar/PDF (mis. Claude, Gemini, GPT-4o/5), atau kirim ulang tanpa lampiran."
+
+/** Reads attached files from the project; a missing one becomes a note instead of failing the chat. */
+async function resolveMessages(attachments: AttachmentStore, projectId: string | undefined, body: { messages: Parameters<typeof buildModelMessages>[0] }, kind: Connection["kind"]) {
+  if (!hasAttachments(body.messages)) return body.messages.map(({ role, content }) => ({ role, content }))
+  if (!projectId) throw new Error("projectId wajib diisi untuk pesan dengan lampiran")
+  return buildModelMessages(
+    body.messages,
+    {
+      info: (id) => attachments.info(projectId, id).catch(() => null),
+      bytes: async (id) => (await attachments.get(projectId, id).catch(() => null))?.bytes ?? null,
+      text: (id) => attachments.text(projectId, id).catch(() => ""),
+    },
+    kind,
+  )
+}
+
+async function handleChat(settings: SettingsStore, projects: ProjectStore, attachments: AttachmentStore, req: Request, res: Response): Promise<void> {
   const parsed = chatRequestSchema.safeParse(req.body)
   if (!parsed.success) {
     sendError(res, 400, parsed.error.issues.map((issue) => issue.message).join("; "))
@@ -71,6 +90,14 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, req: 
     sendError(res, error instanceof UrlGuardError ? 400 : 500, errorMessage(error))
     return
   }
+  let messages
+  try {
+    messages = await resolveMessages(attachments, body.agent?.projectId ?? body.projectId, body, connection.kind)
+  } catch (error) {
+    sendError(res, 400, errorMessage(error))
+    return
+  }
+  const withAttachments = hasAttachments(body.messages)
 
   const timeouts = {
     firstMs: connection.firstChunkTimeoutSec ? connection.firstChunkTimeoutSec * 1000 : config.firstChunkTimeoutMs,
@@ -133,7 +160,7 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, req: 
       ...(tools && body.agent ? { tools, stopWhen: stepCountIs(body.agent.maxSteps) } : {}),
       model,
       system: body.system,
-      messages: body.messages,
+      messages,
       temperature: body.temperature,
       ...(connection.reasoning && connection.reasoning !== "provider-default" ? { reasoning: connection.reasoning } : {}),
       maxOutputTokens: body.maxOutputTokens,
@@ -162,7 +189,7 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, req: 
       else if (part.type === "error") {
         failed = true
         logger.warn("llm chat failed", { ...logContext, seconds: Math.round((Date.now() - startedAt) / 1000), error: describeProviderError(part.error) })
-        writeEvent(res, { type: "error", message: describeProviderError(part.error) })
+        writeEvent(res, { type: "error", message: describeProviderError(part.error) + (withAttachments ? ATTACHMENT_HINT : "") })
       } else if (part.type === "finish") finishReason = part.finishReason
     }
     if (stopReason) throw new Error("stopped")
@@ -180,7 +207,7 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, req: 
       if (!clientGone.signal.aborted) writeEvent(res, { type: "files-changed", paths: [...agent.changed].sort() })
     }
     if (!clientGone.signal.aborted) {
-      const message = timeoutMessage(stopReason, timeouts) ?? describeProviderError(error)
+      const message = timeoutMessage(stopReason, timeouts) ?? describeProviderError(error) + (withAttachments ? ATTACHMENT_HINT : "")
       logger.warn("llm chat failed", { ...logContext, seconds: Math.round((Date.now() - startedAt) / 1000), error: message })
       writeEvent(res, { type: "error", message })
     }
@@ -251,9 +278,9 @@ async function handleTest(settings: SettingsStore, req: Request, res: Response):
   }
 }
 
-export function llmRouter(settings: SettingsStore, projects: ProjectStore): Router {
+export function llmRouter(settings: SettingsStore, projects: ProjectStore, attachments: AttachmentStore): Router {
   const router = Router()
-  router.post("/chat", (req, res, next) => handleChat(settings, projects, req, res).catch(next))
+  router.post("/chat", (req, res, next) => handleChat(settings, projects, attachments, req, res).catch(next))
   router.post("/models", (req, res, next) => handleModels(settings, req, res).catch(next))
   router.post("/test", (req, res, next) => handleTest(settings, req, res).catch(next))
   return router

@@ -254,6 +254,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           <div className="min-h-0 flex-1">
             {leftTab === "chat" ? (
               <ChatPanel
+                projectId={project?.id}
                 chat={chat}
                 connection={connection}
                 connectionProblem={problem}

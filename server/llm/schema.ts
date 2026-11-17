@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { ATTACHMENT_ID, MAX_ATTACHMENTS_PER_MESSAGE } from "../../shared/attachments.js"
 
 export const providerKinds = ["openai-compatible", "anthropic", "gemini"] as const
 
@@ -19,10 +20,14 @@ export const chatRequestSchema = z.object({
       z.object({
         role: z.enum(["user", "assistant"]),
         content: z.string().max(200_000),
+        /** Ids of files stored with the project; the server reads and attaches them. */
+        attachments: z.array(z.string().regex(ATTACHMENT_ID)).max(MAX_ATTACHMENTS_PER_MESSAGE).optional(),
       }),
     )
     .min(1)
     .max(100),
+  /** Project whose attachments the messages refer to. */
+  projectId: z.string().min(1).max(100).optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxOutputTokens: z.number().int().min(256).max(64_000).optional(),
   /** Agent mode: the model may read/write project files, build and search parts with tools. */

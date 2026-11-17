@@ -25,7 +25,20 @@ const editBlock = (search, replace) =>
 const BAD_EDIT = `Ganti resistor.\n${editBlock('resistance="999"', 'resistance="470"')}`
 const GOOD_EDIT = `Resistor diganti 470Ω.\n${editBlock('    <resistor name="R1" resistance="330" footprint="0603" pcbX={0} />', '    <resistor name="R1" resistance="470" footprint="0603" pcbX={0} />')}`
 
+/** Text of a message whose content is a string or a list of parts (attachments). */
+const textOf = (content) => (Array.isArray(content) ? content.filter((p) => p.type === "text").map((p) => p.text).join("\n") : String(content ?? ""))
+
+function describeAttachments(body) {
+  const parts = body.messages.flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+  const images = parts.filter((p) => p.type === "image_url" && p.image_url.url.startsWith("data:image/")).length
+  const labels = parts.filter((p) => p.type === "text" && p.text.startsWith("[Lampiran")).map((p) => p.text.split("\n")[0])
+  const text = parts.filter((p) => p.type === "text").map((p) => p.text).join(" ")
+  const found = ["R1 = 4k7", "NE555 pinout"].filter((needle) => text.includes(needle))
+  return `Gambar: ${images}. Label: ${labels.join(" ")} Terbaca: ${found.join(", ") || "-"}`
+}
+
 function pickReply(last, body) {
+  if (last.includes("ECHO-ATTACH")) return describeAttachments(body)
   if (last.includes("ECHO-LIBRARY")) {
     const system = body.messages?.find((m) => m.role === "system")?.content ?? ""
     const line = system.split("\n").find((l) => l.startsWith("- Relay modul"))
@@ -88,7 +101,7 @@ createServer(async (req, res) => {
   }
   if (req.method === "POST" && req.url === "/v1/chat/completions") {
     const body = await readBody(req)
-    const last = body.messages?.at(-1)?.content ?? ""
+    const last = textOf(body.messages?.at(-1)?.content)
     // Non-streaming requests (the "Tes koneksi" button) get a plain JSON completion.
     if (!body.stream) {
       res.writeHead(200, { "Content-Type": "application/json" })
@@ -105,7 +118,7 @@ createServer(async (req, res) => {
         await sleep(500)
       }
     }
-    const firstUser = body.messages?.filter((m) => m.role === "user").at(-1)?.content ?? ""
+    const firstUser = textOf(body.messages?.filter((m) => m.role === "user").at(-1)?.content)
     if (body.tools && firstUser.includes("AGENT")) {
       const done = body.messages.filter((m) => m.role === "tool").length
       if (done < AGENT_SCRIPT.length) {
