@@ -25,6 +25,8 @@ export interface ChatRequest {
   agent?: { projectId: string; maxSteps: number; versionMessage: string; schematicDisabled?: boolean; routingDisabled?: boolean }
   onTool?: (event: { id: string; name: string; detail: string }) => void
   onToolResult?: (event: { id: string; name: string; ok: boolean; detail: string }) => void
+  /** The model is writing a tool's input (characters so far). */
+  onToolInput?: (event: { id: string; name: string; chars: number }) => void
 }
 
 type StreamEvent =
@@ -33,6 +35,7 @@ type StreamEvent =
   | { type: "error"; message: string }
   | { type: "tool"; id: string; name: string; detail: string }
   | { type: "tool-result"; id: string; name: string; ok: boolean; detail: string }
+  | { type: "tool-input"; id: string; name: string; chars: number }
   | { type: "files-changed"; paths: string[] }
   | { type: "done"; finishReason?: string }
 
@@ -102,6 +105,8 @@ export async function streamChat(request: ChatRequest): Promise<ChatResult> {
       request.onTool?.(event)
     } else if (event?.type === "tool-result") {
       request.onToolResult?.(event)
+    } else if (event?.type === "tool-input") {
+      request.onToolInput?.(event)
     } else if (event?.type === "files-changed") {
       state.changedFiles = event.paths
     } else if (event?.type === "error") {

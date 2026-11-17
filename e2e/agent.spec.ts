@@ -63,3 +63,24 @@ test("with server builds allowed, the agent builds in the sandbox", async ({ pag
   await page.getByText("4 langkah agen").click()
   await expect(page.getByRole("list", { name: "Langkah agen" }).first()).toContainText("build OK")
 })
+
+test("a long tool input keeps the stream alive and shows its progress", async ({ page }) => {
+  await page.goto("/")
+  await expect(page.getByText("Build OK", { exact: true })).toBeVisible({ timeout: 60_000 })
+  await page.getByRole("button", { name: "Pengaturan", exact: true }).click()
+  await page.getByLabel("Tambah dari preset").selectOption("custom")
+  await page.getByRole("button", { name: "Tambah", exact: true }).click()
+  await page.getByLabel("Base URL").fill("http://localhost:9911/v1")
+  await page.getByLabel("Model", { exact: true }).fill("mock-1")
+  // Shorter than the 14 s the mock takes to write the tool input.
+  await page.getByLabel("Batas diam di tengah (dtk)").fill("10")
+  await page.getByLabel("Mode agen").check()
+  await page.getByRole("button", { name: "Simpan" }).click()
+  await expect(page.getByRole("dialog", { name: "Pengaturan" })).toBeHidden()
+
+  await page.getByLabel("Pesan untuk AI").fill("AGENT-SLOW tulis catatan")
+  await page.getByLabel("Pesan untuk AI").press("Enter")
+  await expect(page.getByText(/Menyiapkan write_file \(\d+ KB\)/)).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText("Selesai menulis catatan panjang.")).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText(/berhenti mengirim/)).toHaveCount(0)
+})

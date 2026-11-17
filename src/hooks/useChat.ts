@@ -52,6 +52,8 @@ export interface ChatState {
   autoFixRemaining: number
   /** Agent mode: tools used so far in the current answer. */
   toolSteps: LiveToolStep[]
+  /** Agent mode: a tool input the model is still writing (a big edit), with its size so far. */
+  writingTool: { name: string; chars: number } | null
   send: (text: string, attachments?: AttachmentRef[]) => Promise<void>
   stop: () => void
   undo: (message: ChatMessage) => Promise<void>
@@ -108,6 +110,7 @@ export function useChat({ project, runStatus, onApplyProject, flush, getProblems
   const [isBusy, setIsBusy] = useState(false)
   const [autoFixRemaining, setAutoFixRemaining] = useState(0)
   const [toolSteps, setToolSteps] = useState<LiveToolStep[]>([])
+  const [writingTool, setWritingTool] = useState<{ name: string; chars: number } | null>(null)
   /** Edits the AI sent that did not match the files; handed back to it like build errors. */
   const [editFailures, setEditFailures] = useState<PendingEditFix | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -196,7 +199,11 @@ export function useChat({ project, runStatus, onApplyProject, flush, getProblems
               },
               onText: (delta) => setStreamingText((prev) => prev + delta),
               onReasoning: (delta) => setReasoningText((prev) => (prev + delta).slice(-REASONING_TAIL)),
-              onTool: (event) => updateSteps([...steps, { id: event.id, name: event.name, detail: event.detail }]),
+              onTool: (event) => {
+                setWritingTool(null)
+                updateSteps([...steps, { id: event.id, name: event.name, detail: event.detail }])
+              },
+              onToolInput: (event) => setWritingTool({ name: event.name, chars: event.chars }),
               onToolResult: (event) => updateSteps(steps.map((step) => (step.id === event.id ? { ...step, ok: event.ok, result: event.detail } : step))),
             })
             changed = result.changedFiles
@@ -266,6 +273,7 @@ export function useChat({ project, runStatus, onApplyProject, flush, getProblems
         setStreamingText("")
         setReasoningText("")
         setToolSteps([])
+        setWritingTool(null)
       }
       return true
     },
@@ -332,5 +340,5 @@ export function useChat({ project, runStatus, onApplyProject, flush, getProblems
     await messagesRepo.clear(projectId)
   }, [projectId])
 
-  return { messages, streamingText, reasoningText, busySince, isBusy, autoFixRemaining, toolSteps, send, stop, undo, clear }
+  return { messages, streamingText, reasoningText, busySince, isBusy, autoFixRemaining, toolSteps, writingTool, send, stop, undo, clear }
 }

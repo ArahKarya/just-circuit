@@ -125,6 +125,29 @@ createServer(async (req, res) => {
       }
     }
     const firstUser = textOf(body.messages?.filter((m) => m.role === "user").at(-1)?.content)
+    // "AGENT-SLOW": the tool input arrives in small pieces for longer than the idle timeout.
+    if (body.tools && firstUser.includes("AGENT-SLOW")) {
+      if (body.messages.some((m) => m.role === "tool")) {
+        res.write(chunk("Selesai menulis catatan panjang."))
+        res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`)
+        res.end("data: [DONE]\n\n")
+        return
+      }
+      const args = JSON.stringify({ path: "lib/catatan.md", content: "Catatan desain. ".repeat(200) })
+      const toolChunk = (delta) => `data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: { tool_calls: [delta] }, finish_reason: null }] })}\n\n`
+      // Some text first (as real models do), so the idle timer is past its first-chunk phase.
+      res.write(chunk("Saya tulis catatannya. "))
+      res.write(toolChunk({ index: 0, id: "call_slow", type: "function", function: { name: "write_file", arguments: "" } }))
+      const pieces = 14
+      const size = Math.ceil(args.length / pieces)
+      for (let i = 0; i < pieces; i++) {
+        await sleep(1000)
+        res.write(toolChunk({ index: 0, function: { arguments: args.slice(i * size, (i + 1) * size) } }))
+      }
+      res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\n`)
+      res.end("data: [DONE]\n\n")
+      return
+    }
     if (body.tools && firstUser.includes("AGENT")) {
       const done = body.messages.filter((m) => m.role === "tool").length
       if (done < AGENT_SCRIPT.length) {

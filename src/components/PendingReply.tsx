@@ -1,5 +1,6 @@
 import { Bot, Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
+import { formatBytes } from "../../shared/attachments"
 import { stripCodeBlocks } from "../lib/extract-code"
 import type { ToolStep } from "../lib/types"
 import { ToolSteps } from "./ToolSteps"
@@ -9,6 +10,8 @@ interface PendingReplyProps {
   reasoningText: string
   busySince: number | null
   toolSteps?: readonly ToolStep[]
+  /** A tool input still being written (agent mode). */
+  writingTool?: { name: string; chars: number } | null
 }
 
 const SLOW_HINT_AFTER_S = 90
@@ -32,12 +35,20 @@ function useElapsedSeconds(since: number | null): number {
   return since === null ? 0 : Math.max(0, Math.round((now - since) / 1000))
 }
 
-export function PendingReply({ streamingText, reasoningText, busySince, toolSteps = [] }: PendingReplyProps) {
+export function PendingReply({ streamingText, reasoningText, busySince, toolSteps = [], writingTool = null }: PendingReplyProps) {
   const seconds = useElapsedSeconds(busySince)
   const text = displayText(streamingText)
   const running = toolSteps.find((step) => step.ok === undefined)
-  const phase = running ? "Bekerja" : streamingText ? "Menulis" : reasoningText ? "Berpikir" : "Menunggu AI"
-  const isSilent = !streamingText && !reasoningText && toolSteps.length === 0
+  const phase = writingTool
+    ? `Menyiapkan ${writingTool.name} (${formatBytes(writingTool.chars)})`
+    : running
+      ? "Bekerja"
+      : streamingText
+        ? "Menulis"
+        : reasoningText
+          ? "Berpikir"
+          : "Menunggu AI"
+  const isSilent = !streamingText && !reasoningText && toolSteps.length === 0 && !writingTool
 
   return (
     <li className="flex gap-2.5">

@@ -174,7 +174,7 @@ export function ChatPanel({ projectId, chat, connection, connectionProblem, onOp
             {chat.messages.map((message) => (
               <MessageBubble key={message.id} message={message} projectId={projectId} canUndo={message.id === lastAppliedId && !chat.isBusy} onUndo={(m) => void chat.undo(m)} onRunCommand={onRunCommand} />
             ))}
-            {chat.isBusy && <PendingReply streamingText={chat.streamingText} reasoningText={chat.reasoningText} busySince={chat.busySince} toolSteps={chat.toolSteps} />}
+            {chat.isBusy && <PendingReply streamingText={chat.streamingText} reasoningText={chat.reasoningText} busySince={chat.busySince} toolSteps={chat.toolSteps} writingTool={chat.writingTool} />}
           </ul>
         )}
       </div>

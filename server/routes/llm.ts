@@ -17,6 +17,7 @@ import type { ResolvedConnection, SettingsStore } from "../storage/settings.js"
 import type { Connection } from "../llm/schema.js"
 
 const TEST_TIMEOUT_MS = 90_000
+const TOOL_INPUT_REPORT_CHARS = 1024
 const TEST_REPLY_CHARS = 200
 
 /**
@@ -36,6 +37,8 @@ export type ChatStreamEvent =
   | { type: "error"; message: string }
   /** Agent mode: a tool call and its outcome, shown as steps in the chat. */
   | { type: "tool"; id: string; name: string; detail: string }
+  /** Agent mode: the model is still writing a tool's input (a big edit can take minutes). */
+  | { type: "tool-input"; id: string; name: string; chars: number }
   | { type: "tool-result"; id: string; name: string; ok: boolean; detail: string }
   /** Agent mode: the agent changed these files (already saved and recorded as a version). */
   | { type: "files-changed"; paths: string[] }
@@ -173,9 +176,25 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, attac
     })
     let finishReason: string | undefined
     let failed = false
+    // Tool inputs being written: progress is reported at most every TOOL_INPUT_REPORT_CHARS.
+    const writing = new Map<string, { name: string; chars: number; reported: number }>()
     for await (const part of result.fullStream) {
       // Only real output counts as progress; lifecycle parts (start, start-step) arrive with the headers.
-      if (part.type === "text-delta" || part.type === "reasoning-delta") idle.touch()
+      // A tool input streams as deltas too: an edit holding a whole new group takes minutes to write.
+      if (part.type === "text-delta" || part.type === "reasoning-delta" || part.type === "tool-input-delta" || part.type === "tool-input-start") idle.touch()
+      if (part.type === "tool-input-start") {
+        writing.set(part.id, { name: part.toolName, chars: 0, reported: 0 })
+        writeEvent(res, { type: "tool-input", id: part.id, name: part.toolName, chars: 0 })
+      } else if (part.type === "tool-input-delta") {
+        const input = writing.get(part.id)
+        if (input) {
+          input.chars += part.delta.length
+          if (input.chars - input.reported >= TOOL_INPUT_REPORT_CHARS) {
+            input.reported = input.chars
+            writeEvent(res, { type: "tool-input", id: part.id, name: input.name, chars: input.chars })
+          }
+        }
+      }
       if (part.type === "text-delta") writeEvent(res, { type: "text", text: part.text })
       else if (part.type === "reasoning-delta") writeEvent(res, { type: "reasoning", text: part.text })
       else if (part.type === "tool-call") {

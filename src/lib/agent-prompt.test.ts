@@ -10,6 +10,7 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("- LDO terpisah")
     expect(prompt).not.toContain("SECRET-CODE")
     expect(prompt).not.toContain("## Current project")
+    expect(prompt).toContain("never rewrite an existing file with write_file")
   })
 })
 
