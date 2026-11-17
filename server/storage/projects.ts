@@ -14,6 +14,9 @@ export interface ProjectSettings {
   aiRules?: string
   /** Connection used for this project's chat (null: the global active one). */
   connectionId?: string | null
+  /** Build scope: skip the schematic and/or PCB autorouting to keep big boards fast. */
+  schematicDisabled?: boolean
+  routingDisabled?: boolean
 }
 
 export interface ProjectMeta {

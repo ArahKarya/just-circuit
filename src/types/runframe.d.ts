@@ -29,6 +29,8 @@ export interface RunFrameProps {
   /** Worker script URL; when set, runframe skips fetching "latest" from a CDN. */
   evalWebWorkerBlobUrl?: string
   evalVersion?: string
+  /** tscircuit platform options passed to the evaluator (read once when it starts). */
+  platformConfig?: { schematicDisabled?: boolean; routingDisabled?: boolean }
 }
 
 export declare function RunFrame(props: RunFrameProps): JSX.Element

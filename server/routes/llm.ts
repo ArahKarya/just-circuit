@@ -148,6 +148,8 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, attac
         enabled: stored.agentServerBuild === true,
         runtimeDir: path.join(config.dataDir, "build-runtime"),
         secretDirs: [config.dataDir],
+        schematicDisabled: body.agent.schematicDisabled,
+        routingDisabled: body.agent.routingDisabled,
       },
     }
     tools = createAgentTools(agent)

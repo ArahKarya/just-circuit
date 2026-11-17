@@ -1,11 +1,15 @@
 import { RunFrame } from "@tscircuit/runframe/runner"
-import { memo, useCallback, useMemo } from "react"
+import { memo, useCallback, useLayoutEffect, useMemo } from "react"
 import { ErrorBoundary } from "react-error-boundary"
+import { platformConfigFor, type BuildScope } from "../../shared/build-scope"
 import { useDebounced } from "../hooks/useDebounced"
 import { filesKey } from "../lib/project-ops"
 import { classifyRunErrors } from "../lib/run-status"
 import type { PreviewTab, ProjectFiles, RunStatus } from "../lib/types"
 import { PreviewCrash } from "./PreviewCrash"
+
+/** runframe keeps its evaluator worker on globalThis and reuses it across mounts. */
+const runframeGlobal = globalThis as { runFrameWorker?: { kill: () => void } | null }
 
 interface PreviewPaneProps {
   files: ProjectFiles
@@ -16,9 +20,23 @@ interface PreviewPaneProps {
   /** Pause after typing before the circuit is rebuilt. */
   debounceMs: number
   defaultTab: PreviewTab
+  /** Parts of the build the project skips (schematic, PCB routing). */
+  scope?: BuildScope
 }
 
-function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson, debounceMs, defaultTab }: PreviewPaneProps) {
+function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson, debounceMs, defaultTab, scope }: PreviewPaneProps) {
+  const schematicDisabled = scope?.schematicDisabled ?? false
+  const routingDisabled = scope?.routingDisabled ?? false
+  const platformConfig = useMemo(() => platformConfigFor({ schematicDisabled, routingDisabled }), [schematicDisabled, routingDisabled])
+  // The worker reads platform options only when created, and runframe keeps it across remounts:
+  // drop it when the scope changes (this also stops a build stuck in the old, slower scope).
+  useLayoutEffect(
+    () => () => {
+      runframeGlobal.runFrameWorker?.kill()
+      runframeGlobal.runFrameWorker = null
+    },
+    [schematicDisabled, routingDisabled],
+  )
   const debouncedFiles = useDebounced(files, debounceMs)
   const revision = useMemo(() => filesKey(debouncedFiles), [debouncedFiles])
   const fsMap = useMemo(() => ({ ...debouncedFiles }), [debouncedFiles])
@@ -38,6 +56,9 @@ function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson, debounceM
     <div className="h-full min-h-0 overflow-hidden bg-white">
       <ErrorBoundary FallbackComponent={PreviewCrash} resetKeys={[revision]}>
         <RunFrame
+          // The evaluator reads platform options once when it starts: a new scope needs a new one.
+          key={`${schematicDisabled}-${routingDisabled}`}
+          platformConfig={platformConfig}
           fsMap={fsMap}
           mainComponentPath={entrypoint}
           showFileMenu

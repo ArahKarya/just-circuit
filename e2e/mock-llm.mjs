@@ -39,6 +39,12 @@ function describeAttachments(body) {
 
 function pickReply(last, body) {
   if (last.includes("ECHO-ATTACH")) return describeAttachments(body)
+  if (last.includes("ECHO-CONTEXT")) {
+    const system = body.messages?.find((m) => m.role === "system")?.content ?? ""
+    const problems = system.match(/## Problems in the last build \(from the preview, (\d+) total\)/)
+    const scope = system.match(/switched off ([^.]+) for this project/)
+    return `Konteks: masalah ${problems ? problems[1] : 0}, dimatikan: ${scope ? scope[1] : "-"}`
+  }
   if (last.includes("ECHO-LIBRARY")) {
     const system = body.messages?.find((m) => m.role === "system")?.content ?? ""
     const line = system.split("\n").find((l) => l.startsWith("- Relay modul"))

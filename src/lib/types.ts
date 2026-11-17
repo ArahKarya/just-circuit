@@ -1,4 +1,5 @@
 import type { AttachmentRef } from "../../shared/attachments"
+import type { BuildScope } from "../../shared/build-scope"
 
 export type { AttachmentRef }
 
@@ -83,7 +84,7 @@ export interface TrashEntry {
   fileCount: number
 }
 
-export interface ProjectSettings {
+export interface ProjectSettings extends BuildScope {
   /** Extra instructions for the AI in this project. */
   aiRules?: string
   /** Connection for this project's chat (null: the global active one). */

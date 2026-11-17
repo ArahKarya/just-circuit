@@ -37,6 +37,9 @@ export const chatRequestSchema = z.object({
       maxSteps: z.number().int().min(2).max(40),
       /** Version message for the files the agent changes. */
       versionMessage: z.string().trim().min(1).max(200),
+      /** The project's build scope: server builds skip the same parts as the preview. */
+      schematicDisabled: z.boolean().optional(),
+      routingDisabled: z.boolean().optional(),
     })
     .optional(),
 })

@@ -25,5 +25,5 @@ export default defineConfig({
   worker: { format: "es" },
   // runframe bundles the whole tscircuit toolchain; large chunks are expected.
   build: { chunkSizeWarningLimit: 20_000 },
-  test: { environment: "node", include: ["src/**/*.test.ts", "server/**/*.test.ts"] },
+  test: { environment: "node", include: ["src/**/*.test.ts", "server/**/*.test.ts", "shared/**/*.test.ts"] },
 })

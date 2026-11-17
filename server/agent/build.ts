@@ -3,9 +3,11 @@ import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises"
 import { homedir, platform, tmpdir } from "node:os"
 import path from "node:path"
+import { platformConfigFor, skippedLabel, type BuildScope } from "../../shared/build-scope.js"
 import { isEditablePath } from "../../shared/project-paths.js"
 import { logger } from "../logger.js"
 import { shellEnv } from "../terminal/terminal-server.js"
+import { RUNNER_FILE, RUNNER_SOURCE } from "./build-runner.js"
 
 export interface BuildReport {
   ok: boolean
@@ -13,9 +15,11 @@ export interface BuildReport {
   warnings: string[]
   /** Set when the build itself could not run (disabled, no sandbox, timeout…). */
   problem?: string
+  /** What this build skipped (e.g. "tanpa skematik & routing"), so missing traces aren't read as errors. */
+  skipped?: string
 }
 
-export interface BuildOptions {
+export interface BuildOptions extends BuildScope {
   /** Folder holding node_modules with tscircuit + react, prepared once outside the sandbox. */
   runtimeDir: string
   /** Folders a sandboxed build must never read (data dir, home). */
@@ -32,7 +36,7 @@ const MAX_OUTPUT_CHARS = 2000
 const WARNING_MESSAGE = /but supplier part .+ matching diode polarity/i
 
 /**
- * Model-written TSX runs with bun during `tsci build`. It is treated as hostile: the build runs on a
+ * Model-written TSX runs with bun during the build. It is treated as hostile: the build runs on a
  * copy of the project in a temp folder, inside an OS sandbox with no network, no writes outside that
  * folder and no reads of the home folder (macOS sandbox-exec, Linux bubblewrap). Without a sandbox
  * the build refuses to run.
@@ -126,13 +130,13 @@ let runtimeReady: Promise<void> | null = null
 /** Installs tscircuit + react once into the runtime folder (outside the sandbox, with network). */
 function ensureRuntime(runtimeDir: string): Promise<void> {
   runtimeReady ??= (async () => {
-    if (existsSync(path.join(runtimeDir, "node_modules", ".bin", "tsci")) && existsSync(path.join(runtimeDir, "node_modules", "react"))) return
+    if (existsSync(path.join(runtimeDir, "node_modules", "@tscircuit", "core")) && existsSync(path.join(runtimeDir, "node_modules", "react"))) return
     await mkdir(runtimeDir, { recursive: true })
     await writeFile(path.join(runtimeDir, "package.json"), `${JSON.stringify({ name: "cds-build-runtime", private: true }, null, 2)}\n`)
     logger.info("installing build runtime", { runtimeDir })
     const result = await run("bun", ["add", "tscircuit", "react"], runtimeDir, shellEnv(process.env), INSTALL_TIMEOUT_MS)
     if (result.missing) throw new Error("bun tidak terpasang di server")
-    if (!existsSync(path.join(runtimeDir, "node_modules", "tscircuit"))) throw new Error(`Gagal menyiapkan runtime build: ${result.output.slice(-300)}`)
+    if (!existsSync(path.join(runtimeDir, "node_modules", "@tscircuit", "core"))) throw new Error(`Gagal menyiapkan runtime build: ${result.output.slice(-300)}`)
   })().catch((error: unknown) => {
     runtimeReady = null
     throw error
@@ -182,19 +186,26 @@ async function buildOnce(files: Record<string, string>, entrypoint: string, opti
       await writeFile(path.join(workDir, file), content)
     }
     await writeFile(path.join(workDir, "package.json"), "{}\n")
+    await writeFile(path.join(workDir, RUNNER_FILE), RUNNER_SOURCE)
     await symlink(path.join(await realpath(options.runtimeDir), "node_modules"), path.join(workDir, "node_modules"))
     await mkdir(path.join(workDir, ".home"))
     await mkdir(path.join(workDir, ".tmp"))
 
     const runtimeDir = await realpath(options.runtimeDir)
-    // The runtime's own tsci, so nothing is executed from the (blocked) home folder.
-    const tsci = path.join(runtimeDir, "node_modules", ".bin", "tsci")
-    const sandbox = sandboxCommand(workDir, runtimeDir, options.secretDirs, [tsci, "build", entrypoint])
+    // bun from PATH (entries under the home folder are dropped), tscircuit from the runtime folder.
+    const platform = JSON.stringify(platformConfigFor(options) ?? {})
+    const sandbox = sandboxCommand(workDir, runtimeDir, options.secretDirs, ["bun", "run", RUNNER_FILE, entrypoint, platform])
     if (!sandbox) return fail("Build di server butuh sandbox (macOS: sandbox-exec, Linux: bubblewrap/bwrap). Pasang bwrap atau pakai preview browser.")
     const env = { ...shellEnv(process.env), PATH: sandboxPath(), HOME: path.join(workDir, ".home"), TMPDIR: path.join(workDir, ".tmp") }
     const result = await run(sandbox.command, sandbox.args, workDir, env, BUILD_TIMEOUT_MS, options.signal)
-    if (result.missing) return fail("tsci atau sandbox tidak terpasang di server")
-    if (result.timedOut) return fail(`Build melebihi ${BUILD_TIMEOUT_MS / 1000} detik`)
+    if (result.missing) return fail("bun atau sandbox tidak terpasang di server")
+    if (result.timedOut) {
+      const hint = options.schematicDisabled
+        ? ""
+        : " Di board besar yang paling lama adalah skematik: minta pengguna mematikan \"Skematik\" (tombol di header) selama mengerjakan PCB; routing PCB tanpa skematik jauh lebih cepat."
+      return fail(`Build melebihi ${BUILD_TIMEOUT_MS / 1000} detik.${hint}`)
+    }
+    const skipped = skippedLabel(options) || undefined
 
     const errors: string[] = []
     const warnings: string[] = []
@@ -210,9 +221,9 @@ async function buildOnce(files: Record<string, string>, entrypoint: string, opti
     if (circuits.length === 0) {
       // No circuit at all: the code itself failed (syntax error, bad import…).
       const tail = result.output.trim().split("\n").filter((line) => !/^\s+at /.test(line)).slice(-15).join("\n")
-      return { ok: false, errors: [scrub(tail || "Build gagal tanpa keterangan", workDir)], warnings }
+      return { ok: false, errors: [scrub(tail || "Build gagal tanpa keterangan", workDir)], warnings, skipped }
     }
-    return { ok: errors.length === 0, errors: errors.slice(0, MAX_MESSAGES).map((e) => scrub(e, workDir)), warnings: warnings.slice(0, MAX_MESSAGES) }
+    return { ok: errors.length === 0, errors: errors.slice(0, MAX_MESSAGES).map((e) => scrub(e, workDir)), warnings: warnings.slice(0, MAX_MESSAGES), skipped }
   } finally {
     clearInterval(ticker)
     await rm(workDir, { recursive: true, force: true })

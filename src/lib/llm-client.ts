@@ -22,7 +22,7 @@ export interface ChatRequest {
   /** The model's thinking, streamed before (or between) answer text. */
   onReasoning?: (delta: string) => void
   /** Agent mode: let the model use tools on this project. */
-  agent?: { projectId: string; maxSteps: number; versionMessage: string }
+  agent?: { projectId: string; maxSteps: number; versionMessage: string; schematicDisabled?: boolean; routingDisabled?: boolean }
   onTool?: (event: { id: string; name: string; detail: string }) => void
   onToolResult?: (event: { id: string; name: string; ok: boolean; detail: string }) => void
 }

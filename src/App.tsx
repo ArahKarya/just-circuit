@@ -4,6 +4,8 @@ import { BookOpen, CircuitBoard, Code2, ListChecks, FolderOpen, History, LogOut,
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
 import toast from "react-hot-toast"
+import { skippedLabel, type BuildScope } from "../shared/build-scope"
+import { BuildScopeControls } from "./components/BuildScopeControls"
 import { ChatPanel } from "./components/ChatPanel"
 import { ProblemsPanel } from "./components/ProblemsPanel"
 import { HistoryDialog } from "./components/history/HistoryDialog"
@@ -30,7 +32,7 @@ import { buildIssues, extractIssues, locateComponent, type DesignIssue } from ".
 import { notifyChange } from "./lib/live-data"
 import { buildFixRequest } from "./lib/system-prompt"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
-import { TOPICS } from "./lib/repo"
+import { projectsRepo, TOPICS } from "./lib/repo"
 import { addImportedComponent, withFiles } from "./lib/project-ops"
 import { chatConnection, connectionProblem } from "./lib/providers"
 import type { RunStatus } from "./lib/types"
@@ -94,7 +96,10 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const layoutCircuit = useRef<unknown[]>([])
   const project = working.project
 
-  const chat = useChat({ project, runStatus, onApplyProject: working.apply, flush: working.flush })
+  // The chat reads the latest problems when it sends (they are computed further down).
+  const problemsRef = useRef<readonly DesignIssue[]>([])
+  const getProblems = useCallback(() => problemsRef.current, [])
+  const chat = useChat({ project, runStatus, onApplyProject: working.apply, flush: working.flush, getProblems })
   const fileActions = useFileActions(project, working, activeFile ?? undefined, setActiveFile)
   const connection = chatConnection(ai.settings, project?.settings)
   const problem = connectionProblem(connection)
@@ -135,6 +140,23 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
     return buildIssues(runStatus.errors)
   }, [circuitJson, runStatus])
   const errorCount = issues.filter((i) => i.severity === "error").length
+  problemsRef.current = issues
+
+  const schematicDisabled = project?.settings?.schematicDisabled ?? false
+  const routingDisabled = project?.settings?.routingDisabled ?? false
+  const scope = useMemo<BuildScope>(() => ({ schematicDisabled, routingDisabled }), [schematicDisabled, routingDisabled])
+  const toggleScope = useCallback(
+    (key: keyof BuildScope) => {
+      const current = working.project
+      if (!current) return
+      // Save typing first, so the server copy (which carries the new settings) matches the editor.
+      void working
+        .flush()
+        .then(() => projectsRepo.updateSettings(current.id, { ...current.settings, [key]: !current.settings?.[key] }))
+        .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Gagal menyimpan pengaturan build"))
+    },
+    [working],
+  )
 
   const revealComponent = useCallback(
     (name: string): boolean => {
@@ -187,6 +209,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   )
 
   const status = STATUS_STYLES[runStatus.state]
+  const skipped = skippedLabel(scope)
+  const statusLabel = runStatus.state === "ok" && skipped ? `${status.label} (${skipped})` : status.label
   const files = useMemo(() => project?.files ?? {}, [project?.files])
 
   if (!project) {
@@ -211,8 +235,9 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           className={`ml-2 rounded px-1 text-xs hover:underline ${status.className}`}
           title={runStatus.errors.join("\n") || "Lihat masalah DRC/ERC"}
         >
-          {status.label}
+          {statusLabel}
         </button>
+        <BuildScopeControls scope={scope} isRunning={runStatus.state === "running"} onToggle={toggleScope} />
         {runStatus.warnings.length > 0 && (
           <span className="ml-2 cursor-help text-xs text-warn" title={runStatus.warnings.join("\n\n")}>
             {runStatus.warnings.length} peringatan
@@ -297,6 +322,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
             onCircuitJson={handleCircuitJson}
             debounceMs={preferences.preview.debounceMs}
             defaultTab={preferences.preview.defaultTab}
+            scope={scope}
           />
           {isLayoutMode && (
             <LayoutEditor circuitJson={layoutCircuit.current} onMove={handleLayoutMove} onDone={() => setIsLayoutMode(false)} />

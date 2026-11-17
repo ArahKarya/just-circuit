@@ -1,3 +1,5 @@
+import type { BuildScope } from "../../shared/build-scope"
+import type { DesignIssue } from "./drc"
 import type { ProjectFiles } from "./types"
 
 const TSCIRCUIT_GUIDE = `
@@ -109,6 +111,10 @@ const MAX_MEMORY_PROMPT_CHARS = 8000
 const MAX_LIBRARY_PROMPT_CHARS = 4000
 
 export interface PromptContext {
+  /** Errors and warnings of the last preview build (problems panel). */
+  problems?: readonly DesignIssue[]
+  /** Parts of the build the project skips. */
+  scope?: BuildScope
   /** Catalog of the user's library (describeLibrary). */
   library?: string
   projectRules?: string
@@ -121,7 +127,29 @@ function section(title: string, body: string | undefined, limit: number): string
   return text ? `\n\n## ${title}\n${text.slice(0, limit)}` : ""
 }
 
+const MAX_PROBLEMS_IN_PROMPT = 40
+
+/** Problems of the last build as prompt lines: errors first, then warnings, capped. */
+export function describeProblems(problems: readonly DesignIssue[], limit: number = MAX_PROBLEMS_IN_PROMPT): string {
+  const sorted = [...problems].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1))
+  const lines = sorted.slice(0, limit).map((p) => `- [${p.severity === "error" ? "error" : "warning"}] ${p.message}${p.components.length ? ` (${p.components.join(", ")})` : ""}`)
+  const more = sorted.length > limit ? `\n- …and ${sorted.length - limit} more` : ""
+  return lines.join("\n") + more
+}
+
+function scopeNote(scope: BuildScope | undefined): string {
+  const skipped = [scope?.schematicDisabled ? "the schematic" : "", scope?.routingDisabled ? "PCB autorouting" : ""].filter(Boolean)
+  if (skipped.length === 0) return ""
+  return `\n\n## Build scope
+The user switched off ${skipped.join(" and ")} for this project so builds stay fast on a big board. Builds still check placement and the netlist. ${
+    scope?.routingDisabled ? "Unrouted PCB connections are expected; don't add routeRemaining, autorouter or trace settings to fix them. " : ""
+  }${scope?.schematicDisabled ? "The schematic view is empty on purpose. " : ""}Don't report these skipped parts as problems.`
+}
+
 export function buildSystemPrompt(files: ProjectFiles, entrypoint: string, context: PromptContext = {}): string {
+  const problems = context.problems?.length
+    ? `\n\n## Problems in the last build (from the preview, ${context.problems.length} total)\n${describeProblems(context.problems)}`
+    : ""
   const extra =
     section("Project rules (from the user, follow them unless they conflict with valid tscircuit)", context.projectRules, MAX_PROJECT_RULES_CHARS) +
     section("Memory: about the user (all projects)", context.globalMemory, MAX_MEMORY_PROMPT_CHARS) +
@@ -130,7 +158,9 @@ export function buildSystemPrompt(files: ProjectFiles, entrypoint: string, conte
       "User library (blocks saved from other projects; suggest one when it fits and tell the user to insert it with the Library button, it lands in lib/<name>/)",
       context.library,
       MAX_LIBRARY_PROMPT_CHARS,
-    )
+    ) +
+    scopeNote(context.scope) +
+    problems
   return `${TSCIRCUIT_GUIDE}${extra}
 
 ## Current project

@@ -10,6 +10,7 @@ import { chatConnection, connectionProblem, DEFAULT_AI_SETTINGS, DEFAULT_HISTORY
 import { changesFromReply } from "../lib/reply-changes"
 import { libraryRepo, memoryRepo, messagesRepo, projectsRepo, settingsRepo, TOPICS } from "../lib/repo"
 import { buildAgentSystemPrompt, buildEditFailureRequest, buildFixRequest, buildSystemPrompt } from "../lib/system-prompt"
+import type { DesignIssue } from "../lib/drc"
 import type { AttachmentRef, ChatMessage, Project, RunStatus, ToolStep } from "../lib/types"
 import type { ChatTurn } from "../lib/llm-client"
 
@@ -36,6 +37,8 @@ interface UseChatOptions {
   onApplyProject: (project: Project, commitMessage?: string) => Promise<void>
   /** Saves pending typing (agent mode reads files from the server). */
   flush: () => Promise<void>
+  /** Problems of the last preview build, sent to the AI with each request. */
+  getProblems?: () => readonly DesignIssue[]
 }
 
 export interface ChatState {
@@ -96,7 +99,7 @@ function reloadAfterAgent(projectId: string, changed: readonly string[]): void {
   if (changed.length > 0) notifyChange(TOPICS.project(projectId), TOPICS.versions(projectId), TOPICS.projects)
 }
 
-export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOptions): ChatState {
+export function useChat({ project, runStatus, onApplyProject, flush, getProblems }: UseChatOptions): ChatState {
   const projectId = project?.id
   const messages = useLiveData(projectId ? () => messagesRepo.list(projectId) : null, projectId ? [TOPICS.messages(projectId)] : []).data ?? NO_MESSAGES
   const [streamingText, setStreamingText] = useState("")
@@ -161,7 +164,8 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
 
         const controller = new AbortController()
         abortRef.current = controller
-        const promptContext = { projectRules: current.settings?.aiRules, projectMemory, globalMemory, library: describeLibrary(library) }
+        const scope = { schematicDisabled: current.settings?.schematicDisabled, routingDisabled: current.settings?.routingDisabled }
+        const promptContext = { projectRules: current.settings?.aiRules, projectMemory, globalMemory, library: describeLibrary(library), problems: getProblems?.(), scope }
         const currentTurn: ChatTurn = { role: "user", content: text, ...(attachments.length > 0 ? { attachments: attachments.map((a) => a.id) } : {}) }
         const turns = [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), currentTurn]
         // Once a chat holds attachments, any later reply may echo them: memory is never saved automatically there.
@@ -184,7 +188,12 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
               temperature: temperatureFor(connection, settings.temperature),
               maxOutputTokens: settings.maxOutputTokens,
               signal: controller.signal,
-              agent: { projectId: current.id, maxSteps: settings.agentMaxSteps ?? DEFAULT_AGENT_STEPS, versionMessage: versionMessage(text, false).replace(/^AI:/, "AI (agen):") },
+              agent: {
+                projectId: current.id,
+                maxSteps: settings.agentMaxSteps ?? DEFAULT_AGENT_STEPS,
+                versionMessage: versionMessage(text, false).replace(/^AI:/, "AI (agen):"),
+                ...scope,
+              },
               onText: (delta) => setStreamingText((prev) => prev + delta),
               onReasoning: (delta) => setReasoningText((prev) => (prev + delta).slice(-REASONING_TAIL)),
               onTool: (event) => updateSteps([...steps, { id: event.id, name: event.name, detail: event.detail }]),
@@ -260,7 +269,7 @@ export function useChat({ project, runStatus, onApplyProject, flush }: UseChatOp
       }
       return true
     },
-    [applyToProject],
+    [applyToProject, getProblems],
   )
 
   const send = useCallback(

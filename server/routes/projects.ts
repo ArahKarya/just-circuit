@@ -23,6 +23,8 @@ const updateSchema = z.object({
     .object({
       aiRules: z.string().max(4000).optional(),
       connectionId: z.string().max(100).nullable().optional(),
+      schematicDisabled: z.boolean().optional(),
+      routingDisabled: z.boolean().optional(),
     })
     .optional(),
 })

@@ -2,6 +2,7 @@ import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 import { applyEdits } from "../../src/lib/apply-edits.js"
 import { searchFiles } from "../../src/lib/file-tree.js"
+import type { BuildScope } from "../../shared/build-scope.js"
 import { isEditablePath } from "../../shared/project-paths.js"
 import type { ProjectStore } from "../storage/projects.js"
 import { buildProject } from "./build.js"
@@ -11,7 +12,7 @@ export interface AgentContext {
   projectId: string
   store: ProjectStore
   /** Server builds are opt-in; otherwise the browser preview checks the result. */
-  serverBuild: { enabled: boolean; runtimeDir: string; secretDirs: string[] }
+  serverBuild: { enabled: boolean; runtimeDir: string; secretDirs: string[] } & BuildScope
   signal: AbortSignal
   /** Keeps the stream's idle timer alive during slow tools (builds). */
   keepAlive: () => void
@@ -95,7 +96,8 @@ export function createAgentTools(ctx: AgentContext): ToolSet {
       },
     }),
     build_circuit: tool({
-      description: "Build the circuit and return errors and warnings. Run it after changes and fix every error before answering.",
+      description:
+        "Build the circuit and return errors and warnings. Run it after changes and fix every error before answering. `skipped` tells what the project's build scope leaves out (schematic, PCB routing); missing traces or an empty schematic are then expected, not errors.",
       inputSchema: z.object({}),
       execute: async () => {
         if (!ctx.serverBuild.enabled) {
