@@ -8,6 +8,7 @@ import { isPasswordHash } from "./security/password.js"
 import { createSecretBox, loadSecretKey } from "./security/secret-box.js"
 import { createProjectStore, TRASH_RETENTION_MS } from "./storage/projects.js"
 import { createGlobalMemoryStore } from "./storage/global-memory.js"
+import { createBugReportStore } from "./storage/bug-reports.js"
 import { createLibraryStore } from "./storage/library.js"
 import { createPreferencesStore } from "./storage/preferences.js"
 import { createSettingsStore } from "./storage/settings.js"
@@ -47,7 +48,8 @@ const auth = createAuth({
 const projects = createProjectStore(config.dataDir)
 const purged = await projects.purgeOlderThan(Date.now() - TRASH_RETENTION_MS)
 if (purged > 0) logger.info("trash emptied", { purged })
-const app = createApp({ auth, projects, settings: createSettingsStore(config.dataDir, box), workspaces: createWorkspaceStore(projects), preferences: createPreferencesStore(config.dataDir), memory: createGlobalMemoryStore(config.dataDir), library: createLibraryStore(config.dataDir) })
+const settings = createSettingsStore(config.dataDir, box)
+const app = createApp({ auth, projects, settings, workspaces: createWorkspaceStore(projects), preferences: createPreferencesStore(config.dataDir), memory: createGlobalMemoryStore(config.dataDir), library: createLibraryStore(config.dataDir), bugs: createBugReportStore(config.dataDir, { knownSecrets: settings.apiKeys }) })
 
 const server = app.listen(config.port, config.host, () => {
   logger.info("Just Circuit API listening", {

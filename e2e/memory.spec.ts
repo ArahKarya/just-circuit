@@ -13,7 +13,13 @@ test("the AI saves notes to project and global memory, which are sent with later
 
   await page.getByLabel("Pesan untuk AI").fill("REMEMBER keputusan LDO")
   await page.getByLabel("Pesan untuk AI").press("Enter")
-  await expect(page.getByText("AI mencatat 2 hal ke memori")).toBeVisible({ timeout: 30_000 })
+  // The project note is saved right away; the global one waits for approval.
+  await expect(page.getByText("AI mencatat 1 hal ke memori")).toBeVisible({ timeout: 30_000 })
+  const approval = page.getByRole("dialog", { name: "Setujui catatan memori" })
+  await expect(approval).toContainText("Pakai part JLCPCB basic")
+  await expect(approval).not.toContainText("LDO 3V3")
+  await approval.getByRole("button", { name: "Simpan ke memori" }).click()
+  await expect(approval).toBeHidden()
   await expect(page.getByText("[memori diperbarui]").first()).toBeVisible()
 
   await page.getByRole("button", { name: "Pengaturan", exact: true }).click()

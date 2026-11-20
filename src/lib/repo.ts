@@ -1,4 +1,5 @@
 import { api } from "./api"
+import type { BugReport, BugStatus, NewBugReport } from "../../shared/bug-reports"
 import type { LibraryItem, LibraryItemWithFiles } from "./library"
 import { notifyChange } from "./live-data"
 import type { AiSettings, AttachmentRef, ChatMessage, Connection, Preferences, Project, ProjectFiles, ProjectSettings, ProjectSummary, TrashEntry, Version, Workspace } from "./types"
@@ -15,6 +16,7 @@ export const TOPICS = {
   library: "library",
   projectMemory: (id: string) => `memory:${id}`,
   trash: "trash",
+  bugReports: "bug-reports",
 } as const
 
 const projectUrl = (id: string) => `/api/projects/${encodeURIComponent(id)}`
@@ -208,5 +210,23 @@ export const settingsRepo = {
     const saved = await api.put<AiSettings>("/api/settings", { ...settings, connections: settings.connections.map(toWireConnection) })
     notifyChange(TOPICS.settings)
     return saved
+  },
+}
+
+/** Bug reports about Just Circuit itself; the browser may file only "user" and "client" reports. */
+export const bugReportsRepo = {
+  list: () => api.get<BugReport[]>("/api/bug-reports"),
+  async create(report: NewBugReport & { source: "user" | "client" }): Promise<BugReport | null> {
+    const created = await api.post<BugReport | null>("/api/bug-reports", report)
+    notifyChange(TOPICS.bugReports)
+    return created
+  },
+  async setStatus(id: string, status: BugStatus): Promise<void> {
+    await api.patch(`/api/bug-reports/${encodeURIComponent(id)}`, { status })
+    notifyChange(TOPICS.bugReports)
+  },
+  async remove(id: string): Promise<void> {
+    await api.delete(`/api/bug-reports/${encodeURIComponent(id)}`)
+    notifyChange(TOPICS.bugReports)
   },
 }

@@ -13,6 +13,7 @@ import { createSecretBox } from "./security/secret-box"
 import { createProjectStore } from "./storage/projects"
 import { createSettingsStore } from "./storage/settings"
 import { createGlobalMemoryStore } from "./storage/global-memory"
+import { createBugReportStore } from "./storage/bug-reports"
 import { createLibraryStore } from "./storage/library"
 import { createPreferencesStore } from "./storage/preferences"
 import { createWorkspaceStore } from "./storage/workspaces"
@@ -32,7 +33,7 @@ beforeAll(async () => {
     loginRateLimitPerMinute: 100,
   })
   const projects = createProjectStore(dataDir)
-  const app = createApp({ auth, projects, settings: createSettingsStore(dataDir, createSecretBox(randomBytes(32))), workspaces: createWorkspaceStore(projects), preferences: createPreferencesStore(dataDir), memory: createGlobalMemoryStore(dataDir), library: createLibraryStore(dataDir) })
+  const app = createApp({ auth, projects, settings: createSettingsStore(dataDir, createSecretBox(randomBytes(32))), workspaces: createWorkspaceStore(projects), preferences: createPreferencesStore(dataDir), memory: createGlobalMemoryStore(dataDir), library: createLibraryStore(dataDir), bugs: createBugReportStore(dataDir) })
   server = app.listen(0, "127.0.0.1")
   await new Promise((resolve) => server.once("listening", resolve))
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
@@ -143,3 +144,30 @@ describe("part search API", () => {
   })
 })
 
+
+describe("bug reports API", () => {
+  it("files user reports, refuses forged server/agent reports, and updates status", async () => {
+    const login = await fetch(`${base}/api/auth/login`, { method: "POST", headers: csrf, body: JSON.stringify({ password: PASSWORD }) })
+    const cookie = (login.headers.get("set-cookie") ?? "").split(";")[0]
+    const json = { ...csrf, cookie }
+    const post = (body: unknown, headers: Record<string, string> = json) => fetch(`${base}/api/bug-reports`, { method: "POST", headers, body: JSON.stringify(body) })
+
+    expect((await post({ source: "user", title: "x" }, { "Content-Type": "application/json", cookie })).status).toBe(403)
+    expect((await post({ source: "server", title: "palsu" })).status).toBe(400)
+    expect((await post({ source: "agent", title: "palsu" })).status).toBe(400)
+    expect((await post({ source: "user", title: "x", context: { evil: "1" } })).status).toBe(400)
+
+    const created = await post({ source: "user", title: "3D viewer kosong", details: "token sk-abcdefghijklmnopqrstuvwxyz" })
+    expect(created.status).toBe(201)
+    const report = (await created.json()).data
+    expect(report.details).not.toContain("abcdefghijklmnop")
+
+    const list = (await (await fetch(`${base}/api/bug-reports`, { headers: json })).json()).data
+    expect(list.map((r: { title: string }) => r.title)).toContain("3D viewer kosong")
+
+    const patched = await fetch(`${base}/api/bug-reports/${report.id}`, { method: "PATCH", headers: json, body: JSON.stringify({ status: "fixed" }) })
+    expect((await patched.json()).data.status).toBe("fixed")
+    expect((await fetch(`${base}/api/bug-reports/${report.id}`, { method: "DELETE", headers: json })).status).toBe(200)
+    expect((await fetch(`${base}/api/bug-reports/${report.id}`, { method: "DELETE", headers: json })).status).toBe(404)
+  })
+})

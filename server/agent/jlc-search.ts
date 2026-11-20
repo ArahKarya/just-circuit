@@ -1,3 +1,4 @@
+import { ExternalServiceError } from "../net/external-error.js"
 export interface PartHit {
   lcsc: string
   mfr: string
@@ -20,7 +21,7 @@ const TIMEOUT_MS = 15_000
 export async function searchJlcpcb(query: string, limit: number): Promise<PartHit[]> {
   const url = `${SEARCH_URL}?${new URLSearchParams({ q: query, limit: String(limit) })}`
   const response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "error" })
-  if (!response.ok) throw new Error(`jlcsearch HTTP ${response.status}`)
+  if (!response.ok) throw new ExternalServiceError(`jlcsearch HTTP ${response.status}`)
   const body = (await response.json()) as { components?: Record<string, unknown>[] }
   return (body.components ?? []).slice(0, limit).map((c) => ({
     lcsc: `C${clean(c.lcsc, 12).replace(/\D/g, "")}`,

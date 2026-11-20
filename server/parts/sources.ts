@@ -1,6 +1,7 @@
 import Fuse from "fuse.js"
 import { PART_SOURCES, type PartHit, type PartSearchResult, type PartSource } from "../../shared/parts.js"
 import { readLimited } from "../net/url-guard.js"
+import { ExternalServiceError } from "../net/external-error.js"
 
 /** E2E runs point every source at the local mock (only honoured in E2E mode). */
 const TEST_BASE = process.env.JUST_CIRCUIT_E2E === "1" ? process.env.JUST_CIRCUIT_PARTS_TEST_BASE : undefined
@@ -30,7 +31,7 @@ const SEARCH_CACHE_ENTRIES = 200
 /** JSON from one of the fixed endpoints above (never a URL from the request). */
 export async function fetchJson(url: string, init: RequestInit = {}): Promise<unknown> {
   const response = await fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: "application/json", ...init.headers } })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  if (!response.ok) throw new ExternalServiceError(`HTTP ${response.status}`)
   const body = await readLimited(response, MAX_JSON_BYTES)
   return JSON.parse(body.toString("utf8"))
 }

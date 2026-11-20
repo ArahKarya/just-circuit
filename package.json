@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "set-password": "tsx scripts/set-password.ts",
+    "bugs": "tsx scripts/bugs.ts",
     "postinstall": "node scripts/fix-node-pty.mjs"
   },
   "dependencies": {

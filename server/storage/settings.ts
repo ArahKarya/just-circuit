@@ -109,13 +109,18 @@ export function createSettingsStore(dataDir: string, box: SecretBox) {
     }
   }
 
+  /** Every stored API key, decrypted: only to hide them from bug reports, never to send anywhere. */
+  async function apiKeys(): Promise<string[]> {
+    return (await load()).connections.flatMap((c) => (c.apiKeySealed ? [box.open(c.apiKeySealed)] : []))
+  }
+
   /** Settings without keys, for server-side decisions (e.g. agent options). */
   async function readRaw(): Promise<z.infer<typeof settingsBase>> {
     const { connections: _connections, ...rest } = await load()
     return rest
   }
 
-  return { read, write, resolve, readRaw }
+  return { read, write, resolve, readRaw, apiKeys }
 }
 
 export type SettingsStore = ReturnType<typeof createSettingsStore>

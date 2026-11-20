@@ -4,7 +4,8 @@ import { toTurns } from "../lib/chat-history"
 import { describeLibrary } from "../lib/library"
 import { notifyChange, useLiveData } from "../lib/live-data"
 import { streamChat } from "../lib/llm-client"
-import { appendMemory, extractMemoryNotes } from "../lib/memory"
+import { appendMemory, extractMemoryNotes, type MemoryNotes } from "../lib/memory"
+import { askToSaveMemory } from "../components/chat/MemoryApproval"
 import { filesKey, withFiles } from "../lib/project-ops"
 import { chatConnection, connectionProblem, DEFAULT_AI_SETTINGS, DEFAULT_HISTORY_LIMIT, temperatureFor } from "../lib/providers"
 import { changesFromReply } from "../lib/reply-changes"
@@ -62,19 +63,7 @@ export interface ChatState {
   clear: () => Promise<void>
 }
 
-/**
- * Stores notes the AI asked to remember; failures are reported but never block the reply.
- * When the AI read outside text (part catalogs, attached files) that text could plant notes, so
- * nothing is stored automatically.
- */
-async function saveMemoryNotes(projectId: string, reply: string, projectMemory: string, globalMemory: string, readOutsideText: boolean): Promise<void> {
-  const notes = extractMemoryNotes(reply)
-  if (readOutsideText) {
-    if (notes.project.length + notes.global.length > 0) {
-      toast("Catatan memori dari jawaban ini tidak disimpan otomatis (AI membaca lampiran atau data part dari luar). Salin manual kalau perlu.", { icon: "ℹ️" })
-    }
-    return
-  }
+async function writeMemoryNotes(projectId: string, notes: MemoryNotes, projectMemory: string, globalMemory: string): Promise<void> {
   try {
     const nextProject = appendMemory(projectMemory, notes.project)
     const nextGlobal = appendMemory(globalMemory, notes.global)
@@ -85,6 +74,29 @@ async function saveMemoryNotes(projectId: string, reply: string, projectMemory: 
   } catch (error) {
     toast.error(error instanceof Error ? error.message : "Gagal menyimpan memori")
   }
+}
+
+/**
+ * Stores notes the AI asked to remember; failures are reported but never block the reply.
+ * Global notes (lessons, preferences) reach every project, and notes written after reading outside
+ * text (part catalogs, attached files) could be planted by that text, so those wait for the user's
+ * approval. Project notes from a clean reply are stored right away.
+ */
+async function saveMemoryNotes(projectId: string, reply: string, projectMemory: string, globalMemory: string, readOutsideText: boolean): Promise<void> {
+  const notes = extractMemoryNotes(reply)
+  const automatic: MemoryNotes = { project: readOutsideText ? [] : notes.project, global: [] }
+  const needsApproval: MemoryNotes = { project: readOutsideText ? notes.project : [], global: notes.global }
+  if (automatic.project.length > 0) await writeMemoryNotes(projectId, automatic, projectMemory, globalMemory)
+  if (needsApproval.project.length + needsApproval.global.length === 0) return
+  askToSaveMemory(needsApproval, readOutsideText, async () => {
+    try {
+      // Re-read: memory may have changed while the note waited for approval.
+      const [latestProject, latestGlobal] = await Promise.all([memoryRepo.readProject(projectId), memoryRepo.readGlobal()])
+      await writeMemoryNotes(projectId, needsApproval, latestProject, latestGlobal)
+    } catch (error) {
+      toast.error(error instanceof Error ? `Memori tidak tersimpan: ${error.message}` : "Memori tidak tersimpan")
+    }
+  })
 }
 
 function errorText(error: unknown): string {

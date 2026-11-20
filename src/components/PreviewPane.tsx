@@ -1,12 +1,24 @@
 import { RunFrame } from "@tscircuit/runframe/runner"
 import { memo, useCallback, useLayoutEffect, useMemo } from "react"
 import { ErrorBoundary } from "react-error-boundary"
+import { describeThrown, errorCollector } from "../lib/bug-capture"
+import { bugReportsRepo } from "../lib/repo"
 import { platformConfigFor, type BuildScope } from "../../shared/build-scope"
 import { useDebounced } from "../hooks/useDebounced"
 import { filesKey } from "../lib/project-ops"
 import { classifyRunErrors } from "../lib/run-status"
 import type { PreviewTab, ProjectFiles, RunStatus } from "../lib/types"
 import { PreviewCrash } from "./PreviewCrash"
+
+/** A viewer crash is caught by the boundary, so the window error handler never sees it: file it here. */
+function reportPreviewCrash(error: unknown): void {
+  const described = describeThrown(error)
+  const report = errorCollector.capture(described)
+  if (!report) return
+  bugReportsRepo
+    .create({ ...report, source: "client", title: `Preview crash: ${report.title}`.slice(0, 200), context: { where: "preview" } })
+    .catch(() => undefined)
+}
 
 /** runframe keeps its evaluator worker on globalThis and reuses it across mounts. */
 const runframeGlobal = globalThis as { runFrameWorker?: { kill: () => void } | null }
@@ -54,7 +66,7 @@ function PreviewPaneImpl({ files, entrypoint, onStatus, onCircuitJson, debounceM
 
   return (
     <div className="h-full min-h-0 overflow-hidden bg-white">
-      <ErrorBoundary FallbackComponent={PreviewCrash} resetKeys={[revision]}>
+      <ErrorBoundary FallbackComponent={PreviewCrash} resetKeys={[revision]} onError={reportPreviewCrash}>
         <RunFrame
           // The evaluator reads platform options once when it starts: a new scope needs a new one.
           key={`${schematicDisabled}-${routingDisabled}`}

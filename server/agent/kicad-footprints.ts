@@ -2,6 +2,7 @@ import { lstat, mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { errorMessage, logger } from "../logger.js"
 import { readLimited } from "../net/url-guard.js"
+import { ExternalServiceError } from "../net/external-error.js"
 
 /** KiCad footprints converted to circuit JSON by tscircuit (what the browser preview fetches too). */
 const KICAD_FOOTPRINT_BASE = process.env.JUST_CIRCUIT_E2E === "1" && process.env.JUST_CIRCUIT_PARTS_TEST_BASE ? `${process.env.JUST_CIRCUIT_PARTS_TEST_BASE}/kicad` : "https://kicad-mod-cache.tscircuit.com"
@@ -36,7 +37,7 @@ export function kicadFootprintsIn(files: Readonly<Record<string, string>>): stri
 async function fetchFootprint(name: string, [library, footprint]: [string, string]): Promise<unknown[]> {
   const url = `${KICAD_FOOTPRINT_BASE}/${encodeURIComponent(library)}/${encodeURIComponent(footprint)}.circuit.json`
   const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  if (!response.ok) throw new ExternalServiceError(`HTTP ${response.status}`)
   const body = JSON.parse((await readLimited(response, MAX_FOOTPRINT_BYTES)).toString("utf8")) as unknown
   if (!Array.isArray(body) || body.length === 0) throw new Error(`${name}: bukan circuit JSON`)
   return body

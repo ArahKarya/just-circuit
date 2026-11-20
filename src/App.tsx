@@ -3,6 +3,7 @@ import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@t
 import {
   AlertTriangle,
   BookOpen,
+  Bug,
   ChevronDown,
   CircuitBoard,
   Code2,
@@ -50,6 +51,7 @@ import { useFileActions } from "./hooks/useFileActions"
 import { usePreferences } from "./hooks/usePreferences"
 import { useProjects } from "./hooks/useProjects"
 import { useUndoStack } from "./hooks/useUndoStack"
+import { BugReportsDialog } from "./components/bugs/BugReportsDialog"
 import { rebaseFiles } from "./lib/undo-history"
 import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
@@ -65,7 +67,7 @@ import { buildFixRequest } from "./lib/system-prompt"
 import type { AttachmentRef, ProjectFiles, RunStatus } from "./lib/types"
 
 type LeftTab = "chat" | "code" | "problems"
-type DialogName = "settings" | "projects" | "import" | "parts" | "history" | "library" | "simulation" | null
+type DialogName = "settings" | "projects" | "import" | "parts" | "history" | "library" | "simulation" | "bugs" | null
 type CadMode = "none" | "layout" | "schematic" | "pcb"
 
 const MIN_PANEL_WIDTH = 340
@@ -525,6 +527,9 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
 
           <span className="mx-0.5 h-5 w-px bg-line" aria-hidden="true" />
 
+          <IconButton label="Laporkan bug" onClick={() => setDialog("bugs")}>
+            <Bug size={15} />
+          </IconButton>
           <IconButton label="Pengaturan" onClick={() => setDialog("settings")}>
             <Settings size={16} />
           </IconButton>
@@ -700,6 +705,13 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
         <SettingsDialog settings={ai.settings} onSaveAi={ai.save} preferences={preferences} project={project} onClose={closeDialog} />
       )}
       {dialog === "projects" && <ProjectsDialog projects={projects} onClose={closeDialog} />}
+      {dialog === "bugs" && (
+        <BugReportsDialog
+          projectId={project.id}
+          environment={{ projectName: project.name, buildState: runStatus.state, buildErrors: runStatus.errors }}
+          onClose={closeDialog}
+        />
+      )}
       {dialog === "parts" && (
         <PartSearchDialog
           projectId={project.id}

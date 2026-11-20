@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from "express"
 import path from "node:path"
 import { generateText, stepCountIs, streamText, type ToolSet } from "ai"
-import { createAgentTools, type AgentContext } from "../agent/tools.js"
+import { createAgentTools, isUnexpectedToolError, type AgentContext } from "../agent/tools.js"
+import type { BugReportStore } from "../storage/bug-reports.js"
 import { describeToolCall, describeToolResult } from "../agent/summary.js"
 import type { AttachmentStore } from "../storage/attachments.js"
 import type { ProjectStore } from "../storage/projects.js"
@@ -69,7 +70,7 @@ async function resolveMessages(attachments: AttachmentStore, projectId: string |
   )
 }
 
-async function handleChat(settings: SettingsStore, projects: ProjectStore, attachments: AttachmentStore, req: Request, res: Response): Promise<void> {
+async function handleChat(settings: SettingsStore, projects: ProjectStore, attachments: AttachmentStore, bugs: BugReportStore, req: Request, res: Response): Promise<void> {
   const parsed = chatRequestSchema.safeParse(req.body)
   if (!parsed.success) {
     sendError(res, 400, parsed.error.issues.map((issue) => issue.message).join("; "))
@@ -146,6 +147,13 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, attac
       store: projects,
       keepAlive: () => idle.touch(),
       changed: new Set(),
+      reportBug: async (title, details) => {
+        const read = [...(agent?.outsideReads ?? []), ...(withAttachments ? ["lampiran"] : [])]
+        // Tell whoever fixes it that outside text was in the agent's context when it wrote this.
+        const note = read.length > 0 ? `\n\n[Catatan Just Circuit: run ini membaca data dari luar (${read.join(", ")}); isi laporan bisa terpengaruh teks itu.]` : ""
+        await bugs.record({ source: "agent", title, details: `${details}${note}`, context: { where: "agent:report_app_bug", projectId: body.agent?.projectId } })
+      },
+      outsideReads: new Set(),
       signal: AbortSignal.any([clientGone.signal, upstream.signal]),
       serverBuild: {
         enabled: stored.agentServerBuild === true,
@@ -207,6 +215,13 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, attac
       } else if (part.type === "tool-error") {
         idle.touch()
         writeEvent(res, { type: "tool-result", id: part.toolCallId, name: part.toolName, ok: false, detail: errorMessage(part.error).slice(0, 200) })
+        // Expected tool failures (bad path, no match) are thrown as plain messages for the AI;
+        // anything with a stack outside our own messages is worth a look.
+        if (isUnexpectedToolError(part.error)) {
+          void bugs
+            .record({ source: "server", title: `Tool agen ${part.toolName} gagal: ${errorMessage(part.error)}`, details: part.error instanceof Error ? (part.error.stack ?? "") : "", context: { where: `agent:${part.toolName}`, projectId: body.agent?.projectId } })
+            .catch(() => undefined)
+        }
       }
       else if (part.type === "error") {
         failed = true
@@ -229,7 +244,14 @@ async function handleChat(settings: SettingsStore, projects: ProjectStore, attac
       if (!clientGone.signal.aborted) writeEvent(res, { type: "files-changed", paths: [...agent.changed].sort() })
     }
     if (!clientGone.signal.aborted) {
-      const message = timeoutMessage(stopReason, timeouts) ?? describeProviderError(error) + (withAttachments ? ATTACHMENT_HINT : "")
+      const timedOut = timeoutMessage(stopReason, timeouts)
+      const message = timedOut ?? describeProviderError(error) + (withAttachments ? ATTACHMENT_HINT : "")
+      // Timeouts have been app bugs before (idle timer vs long tool inputs); provider errors are not ours.
+      if (timedOut) {
+        void bugs
+          .record({ source: "server", title: `AI dihentikan karena timeout (${stopReason})`, details: `${timedOut}\nmodel: ${connection.kind}/${connection.model}, agent: ${Boolean(body.agent)}, ${Math.round((Date.now() - startedAt) / 1000)} detik`, context: { where: "llm:chat", projectId: body.agent?.projectId } })
+          .catch(() => undefined)
+      }
       logger.warn("llm chat failed", { ...logContext, seconds: Math.round((Date.now() - startedAt) / 1000), error: message })
       writeEvent(res, { type: "error", message })
     }
@@ -300,9 +322,9 @@ async function handleTest(settings: SettingsStore, req: Request, res: Response):
   }
 }
 
-export function llmRouter(settings: SettingsStore, projects: ProjectStore, attachments: AttachmentStore): Router {
+export function llmRouter(settings: SettingsStore, projects: ProjectStore, attachments: AttachmentStore, bugs: BugReportStore): Router {
   const router = Router()
-  router.post("/chat", (req, res, next) => handleChat(settings, projects, attachments, req, res).catch(next))
+  router.post("/chat", (req, res, next) => handleChat(settings, projects, attachments, bugs, req, res).catch(next))
   router.post("/models", (req, res, next) => handleModels(settings, req, res).catch(next))
   router.post("/test", (req, res, next) => handleTest(settings, req, res).catch(next))
   return router

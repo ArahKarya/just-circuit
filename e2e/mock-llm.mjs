@@ -78,6 +78,13 @@ const AGENT_SCRIPT = [
   { name: "propose_command", args: { command: "echo PERINTAH-$((40+2))", reason: "contoh" } },
 ]
 
+// "AGENT-BUG": reads a part catalog, reports an app bug, then asks to remember a lesson.
+const AGENT_BUG_SCRIPT = [
+  { name: "search_parts", args: { query: "W5500" } },
+  { name: "report_app_bug", args: { title: "build_circuit mengembalikan hasil kosong", details: "Kode valid tapi build_circuit tidak memberi errors maupun warnings." } },
+]
+const AGENT_BUG_SUMMARY = "Selesai, bug aplikasi sudah dilaporkan.\n\n```memory scope=global\n- Pelajaran: W5500 butuh kristal 25MHz (datasheet hal. 9)\n```"
+
 function writeToolCall(res, step, index) {
   const call = { index: 0, id: `call_${index}`, type: "function", function: { name: step.name, arguments: JSON.stringify(step.args) } }
   res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: { role: "assistant", tool_calls: [call] }, finish_reason: null }] })}\n\n`)
@@ -217,6 +224,17 @@ createServer(async (req, res) => {
         res.write(toolChunk({ index: 0, function: { arguments: args.slice(i * size, (i + 1) * size) } }))
       }
       res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\n`)
+      res.end("data: [DONE]\n\n")
+      return
+    }
+    if (body.tools && firstUser.includes("AGENT-BUG")) {
+      const done = body.messages.filter((m) => m.role === "tool").length
+      if (done < AGENT_BUG_SCRIPT.length) {
+        writeToolCall(res, AGENT_BUG_SCRIPT[done], done)
+        return
+      }
+      for (let i = 0; i < AGENT_BUG_SUMMARY.length; i += 40) res.write(chunk(AGENT_BUG_SUMMARY.slice(i, i + 40)))
+      res.write(`data: ${JSON.stringify({ id: "x", object: "chat.completion.chunk", created: 0, model: "mock-1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`)
       res.end("data: [DONE]\n\n")
       return
     }

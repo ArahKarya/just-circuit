@@ -24,6 +24,8 @@ export function describeToolCall(name: string, input: unknown): string {
       return `"${clip(String(args.package ?? ""))}"`
     case "propose_command":
       return String(args.command ?? "")
+    case "report_app_bug":
+      return clip(String(args.title ?? ""))
     default:
       return ""
   }

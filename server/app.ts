@@ -15,12 +15,14 @@ import { projectsRouter } from "./routes/projects.js"
 import { libraryRouter } from "./routes/library.js"
 import { partsRouter } from "./routes/parts.js"
 import { memoryRouter } from "./routes/memory.js"
+import { bugReportsRouter } from "./routes/bug-reports.js"
 import { preferencesRouter } from "./routes/preferences.js"
 import { settingsRouter } from "./routes/settings.js"
 import { trashRouter, workspacesRouter } from "./routes/workspaces.js"
 import { createAttachmentStore } from "./storage/attachments.js"
 import type { ProjectStore } from "./storage/projects.js"
 import type { GlobalMemoryStore } from "./storage/global-memory.js"
+import type { BugReportStore } from "./storage/bug-reports.js"
 import type { LibraryStore } from "./storage/library.js"
 import type { PreferencesStore } from "./storage/preferences.js"
 import type { SettingsStore } from "./storage/settings.js"
@@ -34,6 +36,7 @@ export interface AppDeps {
   preferences: PreferencesStore
   memory: GlobalMemoryStore
   library: LibraryStore
+  bugs: BugReportStore
 }
 
 /** Project files and chat snapshots can be large; the browser migration sends everything at once. */
@@ -54,7 +57,7 @@ function serveClient(app: express.Express): void {
   })
 }
 
-export function createApp({ auth, projects, settings, workspaces, preferences, memory, library }: AppDeps): express.Express {
+export function createApp({ auth, projects, settings, workspaces, preferences, memory, library, bugs }: AppDeps): express.Express {
   const app = express()
   const attachments = createAttachmentStore(projects)
   app.disable("x-powered-by")
@@ -77,7 +80,7 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   if (config.isE2e) {
     // Test-only (index.ts refuses JUST_CIRCUIT_E2E outside a loopback dev server): wipe stored data between E2E tests.
     app.post("/api/test/reset", auth.requireCsrfHeader, (_req, res, next) => {
-      Promise.all(["workspaces", "trash", "settings.json", "preferences.json", "memory.md", "library"].map((name) => rm(path.join(config.dataDir, name), { recursive: true, force: true })))
+      Promise.all(["workspaces", "trash", "settings.json", "preferences.json", "memory.md", "library", "bug-reports.json"].map((name) => rm(path.join(config.dataDir, name), { recursive: true, force: true })))
         .then(() => res.json({ success: true, data: null }), next)
     })
   }
@@ -88,7 +91,7 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   })
   app.use("/api/jlc", rateLimit(config.jlcRateLimitPerMinute), jlcRouter())
   app.use("/api", auth.requireCsrfHeader)
-  app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter(settings, projects, attachments))
+  app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter(settings, projects, attachments, bugs))
   app.use("/api/projects", express.json({ limit: PROJECT_BODY_LIMIT }), projectsRouter(projects, attachments))
   app.use("/api/workspaces", express.json({ limit: "16kb" }), workspacesRouter(workspaces))
   app.use("/api/trash", trashRouter(projects))
@@ -96,6 +99,7 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   app.use("/api/parts", rateLimit(config.jlcRateLimitPerMinute), express.json({ limit: "600kb" }), partsRouter(attachments))
   app.use("/api/library", express.json({ limit: PROJECT_BODY_LIMIT }), libraryRouter(library))
   app.use("/api/memory", express.json({ limit: "64kb" }), memoryRouter(memory))
+  app.use("/api/bug-reports", rateLimit(config.rateLimitPerMinute), express.json({ limit: "64kb" }), bugReportsRouter(bugs))
   app.use("/api/preferences", express.json({ limit: "16kb" }), preferencesRouter(preferences))
   app.use("/api/settings", express.json({ limit: "1mb" }), settingsRouter(settings))
   app.use("/api/migrate", express.json({ limit: MIGRATION_BODY_LIMIT }), migrateRouter(projects, settings))
@@ -105,7 +109,7 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
 
   if (config.isProduction) serveClient(app)
 
-  app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     // Body parser errors (too large, malformed JSON) are the client's fault and carry their status.
     const status = (error as { status?: unknown }).status
     if (typeof status === "number" && status >= 400 && status < 500 && !res.headersSent) {
@@ -113,6 +117,9 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
       return
     }
     logger.error("unhandled error", { error: errorMessage(error) })
+    void bugs
+      .record({ source: "server", title: `Error tak tertangani: ${errorMessage(error)}`, details: error instanceof Error ? (error.stack ?? "") : "", context: { where: `${req.method} ${req.baseUrl}${req.route?.path ?? ""}` } })
+      .catch(() => undefined)
     if (!res.headersSent) res.status(500).json({ success: false, error: "Terjadi kesalahan di server" })
   })
   return app

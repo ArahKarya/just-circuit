@@ -13,6 +13,7 @@ const LABELS: Record<string, string> = {
   search_parts: "Cari part",
   search_footprints: "Cari footprint KiCad",
   propose_command: "Usul perintah",
+  report_app_bug: "Laporkan bug aplikasi",
 }
 
 interface ToolStepsProps {
