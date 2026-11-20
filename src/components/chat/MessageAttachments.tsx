@@ -18,14 +18,21 @@ export function MessageAttachments({ projectId, attachments }: MessageAttachment
   const images = attachments.filter((a) => a.kind === "image")
   const files = attachments.filter((a) => a.kind !== "image")
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {images.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {images.map((image) => {
             const url = attachmentsRepo.url(projectId, image.id)
             return (
-              <a key={image.id} href={url} target="_blank" rel="noreferrer" title={`${image.name} (buka ukuran penuh)`}>
-                <img src={url} alt={image.name} loading="lazy" className="max-h-40 max-w-full rounded-md border border-line bg-white object-contain" />
+              <a
+                key={image.id}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                title={`${image.name} (buka ukuran penuh)`}
+                className="overflow-hidden rounded-lg border border-line bg-white transition hover:border-accent"
+              >
+                <img src={url} alt={image.name} loading="lazy" className="max-h-40 max-w-full object-contain" />
               </a>
             )
           })}
@@ -39,17 +46,19 @@ export function MessageAttachments({ projectId, attachments }: MessageAttachment
               href={attachmentsRepo.url(projectId, file.id)}
               download={file.name}
               title="Unduh"
-              className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-line px-2 py-1 text-xs hover:bg-raised"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-surface/70 px-2.5 py-1.5 text-xs text-ink transition hover:border-accent/40 hover:bg-raised"
             >
-              <FileText size={13} className="shrink-0 text-muted" />
-              <span className="truncate">{file.name}</span>
-              <span className="shrink-0 text-muted">{describe(file)}</span>
+              <FileText size={13} className="shrink-0 text-accent" />
+              <span className="truncate font-medium">{file.name}</span>
+              <span className="shrink-0 text-[11px] text-muted">{describe(file)}</span>
             </a>
           ))}
         </div>
       )}
       {files.some((f) => f.kind === "pdf" && f.textChars === 0) && (
-        <p className="text-[11px] text-warn">PDF tanpa teks (hasil scan): hanya model yang bisa membaca PDF (Claude, Gemini) yang bisa melihat isinya. Kirim halaman pentingnya sebagai gambar kalau perlu.</p>
+        <p className="rounded-lg border border-warn/30 bg-warn/10 px-2.5 py-1.5 text-[11px] leading-relaxed text-warn">
+          PDF tanpa teks (hasil scan): hanya model yang bisa membaca PDF (Claude, Gemini) yang bisa melihat isinya. Kirim halaman pentingnya sebagai gambar kalau perlu.
+        </p>
       )}
     </div>
   )

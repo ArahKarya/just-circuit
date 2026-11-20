@@ -52,21 +52,23 @@ export function PendingReply({ streamingText, reasoningText, busySince, toolStep
 
   return (
     <li className="flex gap-2.5">
-      <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+      <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-accent/25 bg-accent/12 text-accent">
         <Bot size={14} />
       </div>
-      <div className="min-w-0 flex-1 space-y-1.5">
-        <p className="flex items-center gap-1.5 text-xs text-muted" aria-live="polite">
-          <Loader2 size={12} className="animate-spin" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/70 px-2.5 py-0.5 text-xs font-medium text-muted tabular-nums" aria-live="polite">
+          <Loader2 size={12} className="animate-spin text-accent" />
           {phase}… {seconds} dtk
         </p>
         {toolSteps.length > 0 && <ToolSteps steps={toolSteps} />}
         {reasoningText && !streamingText && (
-          <p className="line-clamp-4 whitespace-pre-wrap break-words text-xs italic leading-relaxed text-muted/70">…{reasoningText.trim()}</p>
+          <p className="line-clamp-4 whitespace-pre-wrap break-words border-l-2 border-accent/40 pl-2.5 text-xs italic leading-relaxed text-muted/80">
+            …{reasoningText.trim()}
+          </p>
         )}
-        {text && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-muted">{text}</p>}
+        {text && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-ink/90">{text}</p>}
         {isSilent && seconds >= SLOW_HINT_AFTER_S && (
-          <p className="text-xs text-warn">
+          <p className="rounded-lg border border-warn/30 bg-warn/10 px-2.5 py-1.5 text-xs leading-relaxed text-warn">
             Belum ada respons. Model besar seperti Opus bisa berpikir beberapa menit tanpa terlihat (ditunggu sampai 5 menit). Kalau tidak sabar, klik stop lalu pakai Sonnet.
           </p>
         )}
