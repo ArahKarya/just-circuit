@@ -9,6 +9,9 @@ const API_PORT = Number(process.env.API_PORT ?? 8787)
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), evalWorkerPlugin()],
+  // E2E runs its own dev server; a separate dep cache keeps it from re-optimizing the deps of a
+  // running dev server, which breaks lazy imports there ("Failed to fetch dynamically imported module").
+  cacheDir: process.env.VITE_CACHE_DIR ?? "node_modules/.vite",
   define: { __EVAL_WORKER_URL__: JSON.stringify(evalWorkerUrl()), __EVAL_VERSION__: JSON.stringify(evalVersion()) },
   resolve: {
     alias: {

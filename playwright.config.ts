@@ -18,7 +18,7 @@ export default defineConfig({
       port: WEB_PORT,
       reuseExistingServer: false,
       timeout: 90_000,
-      env: { JUST_CIRCUIT_E2E: "1", JUST_CIRCUIT_PARTS_TEST_BASE: "http://localhost:9911/parts", JUST_CIRCUIT_DATA_DIR: ".e2e-data", API_PORT: String(API_PORT), VITE_PORT: String(WEB_PORT), JUST_CIRCUIT_PASSWORD_HASH: "" },
+      env: { JUST_CIRCUIT_E2E: "1", JUST_CIRCUIT_PARTS_TEST_BASE: "http://localhost:9911/parts", JUST_CIRCUIT_DATA_DIR: ".e2e-data", API_PORT: String(API_PORT), VITE_PORT: String(WEB_PORT), VITE_CACHE_DIR: "node_modules/.vite-e2e", JUST_CIRCUIT_PASSWORD_HASH: "" },
     },
   ],
 })
