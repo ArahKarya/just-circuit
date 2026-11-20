@@ -23,6 +23,8 @@ export interface SimFinding {
     | "no_supply"
     | "floating_pin"
     | "ic_unpowered"
+    | "too_large"
+    | "no_convergence"
   title: string
   detail: string
   components: string[]
@@ -78,6 +80,10 @@ export interface SimulationReport {
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined)
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined)
+
+/** Node count above which the dense O(N^3) solve is skipped. */
+export const MAX_SIM_NODES = 300
+const MAX_SIM_ITERATIONS = 12
 
 const GND_PATTERN = /^(gnd|agnd|dgnd|pgnd|vss|0v|ground|com)$/i
 const POWER_PREFIX = /^(vcc|vdd|vbus|vin|vbat|vsys|avcc|dvcc|avdd|dvdd|v\d+(?:[._]\d+)?|\+?\d+(?:\.\d+)?v|\d+v\d+|p\d+v\d*)$/i
@@ -404,6 +410,30 @@ export function simulateCircuit(circuitJson: readonly unknown[], options: Simula
 
   // Iterative DC MNA solver (handles nonlinear diodes/LEDs cleanly in <= 12 iterations)
   const N = allRoots.length
+  if (N > MAX_SIM_NODES) {
+    // The dense solve is O(N^3) on the main thread; a large board would freeze the tab.
+    return {
+      ok: false,
+      totalCurrentMa: 0,
+      totalPowerMw: 0,
+      rails: [...supplyNodes.entries()].map(([root, rail]) => ({ nodeId: root, name: rail.name, voltage: rail.voltage })),
+      switches: [],
+      nodes: [],
+      components: [],
+      findings: [
+        {
+          id: "too-large",
+          severity: "warning",
+          code: "too_large",
+          title: `Rangkaian terlalu besar untuk disimulasikan (${N} node, maks ${MAX_SIM_NODES})`,
+          detail: "Simulator DC ini ditujukan untuk satu blok rangkaian. Simulasikan bagian yang lebih kecil, misalnya satu modul di proyek terpisah.",
+          components: [],
+        },
+        ...findings,
+      ],
+    }
+  }
+  let converged = false
   const diodeConducting = new Map<string, boolean>()
   let voltages = new Array<number>(N).fill(0)
 
@@ -415,7 +445,7 @@ export function simulateCircuit(circuitJson: readonly unknown[], options: Simula
     G[b][a] -= g
   }
 
-  for (let iter = 0; iter < 12; iter += 1) {
+  for (let iter = 0; iter < MAX_SIM_ITERATIONS; iter += 1) {
     const G = Array.from({ length: N }, () => new Array<number>(N).fill(0))
     const I = new Array<number>(N).fill(0)
 
@@ -487,7 +517,20 @@ export function simulateCircuit(circuitJson: readonly unknown[], options: Simula
       }
     }
     voltages = nextV
-    if (!changed) break
+    if (!changed) {
+      converged = true
+      break
+    }
+  }
+  if (!converged && N > 0) {
+    findings.push({
+      id: "no-convergence",
+      severity: "warning",
+      code: "no_convergence",
+      title: `Simulasi dioda/LED tidak konvergen setelah ${MAX_SIM_ITERATIONS} iterasi`,
+      detail: "Status hidup/mati dioda terus berganti, jadi tegangan dan arus di bawah bisa tidak akurat.",
+      components: [],
+    })
   }
 
   // Evaluate component telemetry & electrical safety checks

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { inferRailVoltage, parseOhms, simulateCircuit } from "./circuit-sim"
+import { inferRailVoltage, MAX_SIM_NODES, parseOhms, simulateCircuit } from "./circuit-sim"
 
 describe("parseOhms & inferRailVoltage", () => {
   it("parses resistor values in standard and compact notation", () => {
@@ -89,5 +89,36 @@ describe("simulateCircuit", () => {
     const report = simulateCircuit(circuit)
     expect(report.ok).toBe(false)
     expect(report.findings.some((f) => f.code === "resistor_overpower")).toBe(true)
+  })
+
+  it("skips boards too large for the dense solver instead of freezing the tab", () => {
+    const count = MAX_SIM_NODES
+    const circuit = Array.from({ length: count }, (_, i) => [
+      { type: "source_component", source_component_id: `r${i}`, name: `R${i}`, ftype: "simple_resistor", resistance: 1000 },
+      { type: "source_port", source_port_id: `r${i}_1`, source_component_id: `r${i}`, name: "pin1" },
+      { type: "source_port", source_port_id: `r${i}_2`, source_component_id: `r${i}`, name: "pin2" },
+    ]).flat()
+    const started = Date.now()
+    const report = simulateCircuit(circuit)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(report.findings.map((f) => f.code)).toContain("too_large")
+    expect(report.components).toEqual([])
+  })
+
+  it("does not warn about convergence on a circuit that settles", () => {
+    const circuit = [
+      { type: "source_net", source_net_id: "n_vcc", name: "5V" },
+      { type: "source_net", source_net_id: "n_gnd", name: "GND" },
+      { type: "source_component", source_component_id: "d1", name: "D1", ftype: "simple_led", color: "red" },
+      { type: "source_port", source_port_id: "d1_a", source_component_id: "d1", name: "anode" },
+      { type: "source_port", source_port_id: "d1_c", source_component_id: "d1", name: "cathode" },
+      { type: "source_component", source_component_id: "r1", name: "R1", ftype: "simple_resistor", resistance: 330 },
+      { type: "source_port", source_port_id: "r1_1", source_component_id: "r1", name: "pin1" },
+      { type: "source_port", source_port_id: "r1_2", source_component_id: "r1", name: "pin2" },
+      { type: "source_trace", connected_source_port_ids: ["r1_1"], connected_source_net_ids: ["n_vcc"] },
+      { type: "source_trace", connected_source_port_ids: ["r1_2", "d1_a"], connected_source_net_ids: [] },
+      { type: "source_trace", connected_source_port_ids: ["d1_c"], connected_source_net_ids: ["n_gnd"] },
+    ]
+    expect(simulateCircuit(circuit).findings.map((f) => f.code)).not.toContain("no_convergence")
   })
 })
