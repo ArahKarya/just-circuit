@@ -1,68 +1,52 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { EMPTY_HISTORY, recordEdit, redoEdit, undoEdit, type StepResult, type UndoHistory } from "../lib/undo-history"
 import type { ProjectFiles } from "../lib/types"
 
-const MAX_UNDO_STEPS = 50
+export type UndoStepResult = { status: "empty" } | { status: "conflict"; paths: string[] } | { status: "ok"; files: ProjectFiles }
 
 export interface UndoStack {
   canUndo: boolean
   canRedo: boolean
-  /** Record the `before` files snapshot before applying a manual edit. */
-  record: (before: ProjectFiles) => void
-  /** Pops the last snapshot (passing the current files for redo) and returns it. */
-  undo: (current: ProjectFiles) => ProjectFiles | null
-  /** Re-applies the last undone snapshot (passing current files for undo) and returns it. */
-  redo: (current: ProjectFiles) => ProjectFiles | null
+  /** Records a manual CAD edit as the files it changed (no-op edits are ignored). */
+  record: (before: ProjectFiles, after: ProjectFiles) => void
+  /** Reverts the last edit on top of `current`, refusing if a touched file changed since. */
+  undo: (current: ProjectFiles) => UndoStepResult
+  /** Re-applies the last undone edit on top of `current`, with the same check. */
+  redo: (current: ProjectFiles) => UndoStepResult
   clear: () => void
 }
 
-/** In-memory undo/redo stack for interactive visual CAD edits, reset on project switch. */
+/**
+ * In-memory undo/redo for interactive CAD edits, reset on project switch. The history lives in a
+ * ref so rapid key presses always see the latest stack; state only drives re-rendering.
+ */
 export function useUndoStack(projectId: string | undefined): UndoStack {
-  const [past, setPast] = useState<ProjectFiles[]>([])
-  const [future, setFuture] = useState<ProjectFiles[]>([])
-  const pastRef = useRef(past)
-  const futureRef = useRef(future)
-  pastRef.current = past
-  futureRef.current = future
+  const history = useRef<UndoHistory>(EMPTY_HISTORY)
+  const [snapshot, setSnapshot] = useState<UndoHistory>(EMPTY_HISTORY)
 
-  useEffect(() => {
-    setPast([])
-    setFuture([])
-  }, [projectId])
-
-  const record = useCallback((before: ProjectFiles) => {
-    setPast((prev) => [...prev.slice(-(MAX_UNDO_STEPS - 1)), before])
-    setFuture([])
+  const set = useCallback((next: UndoHistory) => {
+    history.current = next
+    setSnapshot(next)
   }, [])
 
-  const undo = useCallback((current: ProjectFiles): ProjectFiles | null => {
-    const stack = pastRef.current
-    if (stack.length === 0) return null
-    const previous = stack[stack.length - 1]
-    setPast(stack.slice(0, -1))
-    setFuture((prev) => [...prev.slice(-(MAX_UNDO_STEPS - 1)), current])
-    return previous
-  }, [])
+  useEffect(() => set(EMPTY_HISTORY), [projectId, set])
 
-  const redo = useCallback((current: ProjectFiles): ProjectFiles | null => {
-    const stack = futureRef.current
-    if (stack.length === 0) return null
-    const next = stack[stack.length - 1]
-    setFuture(stack.slice(0, -1))
-    setPast((prev) => [...prev.slice(-(MAX_UNDO_STEPS - 1)), current])
-    return next
-  }, [])
+  const record = useCallback((before: ProjectFiles, after: ProjectFiles) => set(recordEdit(history.current, before, after)), [set])
 
-  const clear = useCallback(() => {
-    setPast([])
-    setFuture([])
-  }, [])
+  const finish = useCallback(
+    (result: StepResult): UndoStepResult => {
+      if (result.status !== "ok") return result
+      set(result.history)
+      return { status: "ok", files: result.files }
+    },
+    [set],
+  )
 
-  return {
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
-    record,
-    undo,
-    redo,
-    clear,
-  }
+  const undo = useCallback((current: ProjectFiles) => finish(undoEdit(history.current, current)), [finish])
+  const redo = useCallback((current: ProjectFiles) => finish(redoEdit(history.current, current)), [finish])
+  const clear = useCallback(() => set(EMPTY_HISTORY), [set])
+
+  const canUndo = snapshot.past.length > 0
+  const canRedo = snapshot.future.length > 0
+  return useMemo(() => ({ canUndo, canRedo, record, undo, redo, clear }), [canUndo, canRedo, record, undo, redo, clear])
 }

@@ -50,6 +50,7 @@ import { useFileActions } from "./hooks/useFileActions"
 import { usePreferences } from "./hooks/usePreferences"
 import { useProjects } from "./hooks/useProjects"
 import { useUndoStack } from "./hooks/useUndoStack"
+import { rebaseFiles } from "./lib/undo-history"
 import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
 import type { SimFinding } from "./lib/circuit-sim"
@@ -314,29 +315,39 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
     })
   }, [])
 
+  // CAD editors build their edit from the files they rendered with. Rebase it onto the latest copy
+  // so an edit that lands before the next render cannot drop the one before it.
+  const renderedFiles = working.project?.files
   const commitCadFiles = useCallback(
     (nextFiles: ProjectFiles) => {
-      const current = working.project
-      if (!current) return
-      undoStack.record(current.files)
-      void working.apply({ ...current, files: nextFiles, updatedAt: Date.now() })
+      if (!renderedFiles) return
+      void working.update((current) => {
+        const files = rebaseFiles(renderedFiles, nextFiles, current.files)
+        undoStack.record(current.files, files)
+        return { ...current, files, updatedAt: Date.now() }
+      })
+    },
+    [working, undoStack, renderedFiles],
+  )
+
+  const stepCadHistory = useCallback(
+    (direction: "undo" | "redo") => {
+      void working.update((current) => {
+        const result = direction === "undo" ? undoStack.undo(current.files) : undoStack.redo(current.files)
+        if (result.status === "ok") return { ...current, files: result.files, updatedAt: Date.now() }
+        if (result.status === "conflict") {
+          undoStack.clear()
+          toast.error(
+            `${direction === "undo" ? "Undo" : "Redo"} dibatalkan: ${result.paths.join(", ")} sudah diubah sejak edit ini (di editor kode atau oleh AI). Riwayat undo CAD dikosongkan.`,
+          )
+        }
+        return current
+      })
     },
     [working, undoStack],
   )
-
-  const handleCadUndo = useCallback(() => {
-    const current = working.project
-    if (!current) return
-    const prev = undoStack.undo(current.files)
-    if (prev) void working.apply({ ...current, files: prev, updatedAt: Date.now() })
-  }, [working, undoStack])
-
-  const handleCadRedo = useCallback(() => {
-    const current = working.project
-    if (!current) return
-    const next = undoStack.redo(current.files)
-    if (next) void working.apply({ ...current, files: next, updatedAt: Date.now() })
-  }, [working, undoStack])
+  const handleCadUndo = useCallback(() => stepCadHistory("undo"), [stepCadHistory])
+  const handleCadRedo = useCallback(() => stepCadHistory("redo"), [stepCadHistory])
 
   const askAiAboutComponent = useCallback(
     (name: string) => {
