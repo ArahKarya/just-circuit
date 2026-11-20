@@ -1,7 +1,8 @@
-import { FileArchive, Plus } from "lucide-react"
+import { CircuitBoard, FileArchive, Plus } from "lucide-react"
 import { useRef, useState } from "react"
 import toast from "react-hot-toast"
 import type { ProjectsState } from "../../hooks/useProjects"
+import { importKicadFiles } from "../../lib/kicad-import"
 import { attempt } from "../../lib/notify"
 import { DEFAULT_TEMPLATE_ID, findTemplate, PROJECT_TEMPLATES } from "../../lib/templates"
 import { readProjectZip } from "../../lib/zip-import"
@@ -20,6 +21,7 @@ export function NewProjectForm({ projects, workspaceId, onDone }: NewProjectForm
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID)
   const [busy, setBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const kicadInput = useRef<HTMLInputElement>(null)
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true)
@@ -39,6 +41,14 @@ export function NewProjectForm({ projects, workspaceId, onDone }: NewProjectForm
           ? ` (${imported.skipped.length} file dilewati: ${imported.skipped.slice(0, 3).join(", ")}${imported.skipped.length > 3 ? ", …" : ""})`
           : ""
       toast.success(`${imported.name} diimpor, ${Object.keys(imported.files).length} file${note}`)
+    })
+
+  const importKicad = (fileList: FileList) =>
+    run(async () => {
+      const files = await Promise.all([...fileList].map(async (f) => ({ name: f.name, content: await f.text() })))
+      const imported = importKicadFiles(files)
+      await projects.insert({ name: imported.name, entrypoint: imported.entrypoint, files: imported.files, workspaceId })
+      toast.success(`${imported.name} diimpor dari KiCad (${imported.stats.components} komponen, ${imported.stats.traces} trace)`)
     })
 
   return (
@@ -68,6 +78,23 @@ export function NewProjectForm({ projects, workspaceId, onDone }: NewProjectForm
               if (file) void importZip(file)
             }}
           />
+          <input
+            ref={kicadInput}
+            type="file"
+            multiple
+            accept=".kicad_pcb,.kicad_sch"
+            className="hidden"
+            aria-label="File proyek KiCad"
+            onChange={(e) => {
+              const files = e.target.files
+              if (files && files.length > 0) void importKicad(files)
+              e.target.value = ""
+            }}
+          />
+          <Button size="sm" onClick={() => kicadInput.current?.click()} disabled={busy}>
+            <CircuitBoard size={14} />
+            Impor KiCad
+          </Button>
           <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}>
             <FileArchive size={14} />
             Impor ZIP
