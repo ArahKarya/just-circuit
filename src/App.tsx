@@ -6,6 +6,7 @@ import {
   ChevronDown,
   CircuitBoard,
   Code2,
+  Cpu,
   FolderOpen,
   History,
   ListChecks,
@@ -13,6 +14,7 @@ import {
   MessageSquare,
   Move,
   PackageSearch,
+  PenTool,
   Settings,
   TerminalSquare,
 } from "lucide-react"
@@ -25,6 +27,8 @@ import { BuildScopeControls } from "./components/BuildScopeControls"
 import { ChatPanel, type ChatDraftRequest } from "./components/ChatPanel"
 import { CodeEditor } from "./components/CodeEditor"
 import { LayoutEditor } from "./components/LayoutEditor"
+import { PcbCadEditor } from "./components/cad/PcbCadEditor"
+import { SchematicEditor } from "./components/cad/SchematicEditor"
 import { LoginScreen } from "./components/LoginScreen"
 import { PreviewPane } from "./components/PreviewPane"
 import { ProblemsPanel } from "./components/ProblemsPanel"
@@ -43,6 +47,7 @@ import { useChat } from "./hooks/useChat"
 import { useFileActions } from "./hooks/useFileActions"
 import { usePreferences } from "./hooks/usePreferences"
 import { useProjects } from "./hooks/useProjects"
+import { useUndoStack } from "./hooks/useUndoStack"
 import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
 import { buildIssues, extractIssues, locateComponent, mergeRunWarnings, type DesignIssue } from "./lib/drc"
@@ -53,10 +58,11 @@ import { addComponentFile, addImportedComponent, withFiles } from "./lib/project
 import { chatConnection, connectionProblem } from "./lib/providers"
 import { projectsRepo, TOPICS } from "./lib/repo"
 import { buildFixRequest } from "./lib/system-prompt"
-import type { AttachmentRef, RunStatus } from "./lib/types"
+import type { AttachmentRef, ProjectFiles, RunStatus } from "./lib/types"
 
 type LeftTab = "chat" | "code" | "problems"
 type DialogName = "settings" | "projects" | "import" | "parts" | "history" | "library" | null
+type CadMode = "none" | "layout" | "schematic" | "pcb"
 
 const MIN_PANEL_WIDTH = 340
 const DEFAULT_CHAT_WIDTH = 450
@@ -119,7 +125,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const [rendered, setRendered] = useState<{ json: unknown[]; revision: string } | null>(null)
   const [revealRequest, setRevealRequest] = useState<{ path: string; line: number; column: number; nonce: number } | null>(null)
   const handleCircuitJson = useCallback((json: unknown[], revision: string) => setRendered({ json, revision }), [])
-  const [isLayoutMode, setIsLayoutMode] = useState(false)
+  const [cadMode, setCadMode] = useState<CadMode>("none")
+  const [lockedComponents, setLockedComponents] = useState<Set<string>>(() => new Set())
   const [showTerminal, setShowTerminal] = useState(false)
   /** A command the agent proposed and the user chose to run. */
   const [terminalCommand, setTerminalCommand] = useState<{ text: string; nonce: number } | null>(null)
@@ -161,11 +168,15 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   /** Circuit shown in the layout editor, fixed while it is open. */
   const layoutCircuit = useRef<unknown[]>([])
   const project = working.project
+  const undoStack = useUndoStack(project?.id)
 
-  // The chat reads the latest problems when it sends (they are computed further down).
+  // The chat reads the latest problems & locked components when it sends.
   const problemsRef = useRef<readonly DesignIssue[]>([])
+  const lockedRef = useRef<readonly string[]>([])
+  lockedRef.current = [...lockedComponents]
   const getProblems = useCallback(() => problemsRef.current, [])
-  const chat = useChat({ project, runStatus, onApplyProject: working.apply, flush: working.flush, getProblems })
+  const getLockedComponents = useCallback(() => lockedRef.current, [])
+  const chat = useChat({ project, runStatus, onApplyProject: working.apply, flush: working.flush, getProblems, getLockedComponents })
   const fileActions = useFileActions(project, working, activeFile ?? undefined, setActiveFile)
   const connection = chatConnection(ai.settings, project?.settings)
   const problem = connectionProblem(connection)
@@ -231,7 +242,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const projectId = project?.id
   useEffect(() => {
     setRendered(null)
-    setIsLayoutMode(false)
+    setCadMode("none")
+    setLockedComponents(new Set())
   }, [projectId])
 
   // A circuit only counts for the code it was rendered from (a failed build leaves an older one behind).
@@ -287,8 +299,48 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const openLayoutEditor = useCallback(() => {
     if (!project || !circuitJson) return
     layoutCircuit.current = circuitJson
-    setIsLayoutMode(true)
+    setCadMode("layout")
   }, [project, circuitJson])
+
+  const toggleLock = useCallback((name: string) => {
+    setLockedComponents((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }, [])
+
+  const commitCadFiles = useCallback(
+    (nextFiles: ProjectFiles) => {
+      const current = working.project
+      if (!current) return
+      undoStack.record(current.files)
+      void working.apply({ ...current, files: nextFiles, updatedAt: Date.now() })
+    },
+    [working, undoStack],
+  )
+
+  const handleCadUndo = useCallback(() => {
+    const current = working.project
+    if (!current) return
+    const prev = undoStack.undo(current.files)
+    if (prev) void working.apply({ ...current, files: prev, updatedAt: Date.now() })
+  }, [working, undoStack])
+
+  const handleCadRedo = useCallback(() => {
+    const current = working.project
+    if (!current) return
+    const next = undoStack.redo(current.files)
+    if (next) void working.apply({ ...current, files: next, updatedAt: Date.now() })
+  }, [working, undoStack])
+
+  const askAiAboutComponent = useCallback(
+    (name: string) => {
+      askAiWithDraft(`Untuk komponen ${name}: `, [])
+    },
+    [askAiWithDraft],
+  )
 
   const handleLayoutMove = useCallback(
     (event: ManualEditEvent, snapshot: unknown[]) => {
@@ -378,10 +430,32 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
         <div className="ml-auto flex items-center gap-1">
           <Button
             size="sm"
+            variant={cadMode === "schematic" ? "primary" : "ghost"}
+            aria-label="Edit Skematik"
+            onClick={() => setCadMode((m) => (m === "schematic" ? "none" : "schematic"))}
+            disabled={!rendered}
+            title={rendered ? "Editor Skematik interaktif (ala KiCad)" : "Butuh build yang berhasil"}
+          >
+            <PenTool size={14} />
+            <span className="hidden 2xl:inline">Edit Skematik</span>
+          </Button>
+          <Button
+            size="sm"
+            variant={cadMode === "pcb" ? "primary" : "ghost"}
+            aria-label="PCB CAD"
+            onClick={() => setCadMode((m) => (m === "pcb" ? "none" : "pcb"))}
+            disabled={!rendered}
+            title={rendered ? "Editor PCB manual + Copper Trace (ala KiCad)" : "Butuh build yang berhasil"}
+          >
+            <Cpu size={14} />
+            <span className="hidden 2xl:inline">PCB CAD</span>
+          </Button>
+          <Button
+            size="sm"
             variant="ghost"
             aria-label="Atur posisi"
             onClick={openLayoutEditor}
-            disabled={!canEditLayout || isLayoutMode}
+            disabled={!canEditLayout || cadMode === "layout"}
             title={canEditLayout ? "Seret komponen di PCB" : "Butuh build yang berhasil"}
           >
             <Move size={14} />
@@ -539,8 +613,38 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
             defaultTab={preferences.preview.defaultTab}
             scope={scope}
           />
-          {isLayoutMode && (
-            <LayoutEditor circuitJson={layoutCircuit.current} onMove={handleLayoutMove} onDone={() => setIsLayoutMode(false)} />
+          {cadMode === "layout" && (
+            <LayoutEditor circuitJson={layoutCircuit.current} onMove={handleLayoutMove} onDone={() => setCadMode("none")} />
+          )}
+          {cadMode === "schematic" && rendered && (
+            <SchematicEditor
+              project={project}
+              circuitJson={rendered.json}
+              lockedComponents={lockedComponents}
+              onToggleLock={toggleLock}
+              onCommitFiles={commitCadFiles}
+              canUndo={undoStack.canUndo}
+              canRedo={undoStack.canRedo}
+              onUndo={handleCadUndo}
+              onRedo={handleCadRedo}
+              onAskAi={askAiAboutComponent}
+              onDone={() => setCadMode("none")}
+            />
+          )}
+          {cadMode === "pcb" && rendered && (
+            <PcbCadEditor
+              project={project}
+              circuitJson={rendered.json}
+              lockedComponents={lockedComponents}
+              onToggleLock={toggleLock}
+              onCommitFiles={commitCadFiles}
+              canUndo={undoStack.canUndo}
+              canRedo={undoStack.canRedo}
+              onUndo={handleCadUndo}
+              onRedo={handleCadRedo}
+              onAskAi={askAiAboutComponent}
+              onDone={() => setCadMode("none")}
+            />
           )}
         </section>
       </main>

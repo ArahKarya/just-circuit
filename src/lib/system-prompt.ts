@@ -116,6 +116,8 @@ export interface PromptContext {
   problems?: readonly DesignIssue[]
   /** Parts of the build the project skips. */
   scope?: BuildScope
+  /** Components locked by the user in the visual CAD editors (do not move/delete unless asked). */
+  lockedComponents?: readonly string[]
   /** Catalog of the user's library (describeLibrary). */
   library?: string
   projectRules?: string
@@ -151,6 +153,9 @@ export function buildSystemPrompt(files: ProjectFiles, entrypoint: string, conte
   const problems = context.problems?.length
     ? `\n\n## Problems in the last build (from the preview, ${context.problems.length} total)\n${describeProblems(context.problems)}`
     : ""
+  const locked = context.lockedComponents?.length
+    ? `\n\n## Manually locked components\nThe user manually locked these components in the visual CAD editor: ${context.lockedComponents.join(", ")}. Keep their placement, rotation, layer, and traces intact unless the user explicitly asks to change them.`
+    : ""
   const extra =
     section("Project rules (from the user, follow them unless they conflict with valid tscircuit)", context.projectRules, MAX_PROJECT_RULES_CHARS) +
     section("Memory: about the user (all projects)", context.globalMemory, MAX_MEMORY_PROMPT_CHARS) +
@@ -161,6 +166,7 @@ export function buildSystemPrompt(files: ProjectFiles, entrypoint: string, conte
       MAX_LIBRARY_PROMPT_CHARS,
     ) +
     scopeNote(context.scope) +
+    locked +
     problems
   return `${TSCIRCUIT_GUIDE}${extra}
 

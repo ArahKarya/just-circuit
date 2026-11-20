@@ -39,6 +39,8 @@ interface UseChatOptions {
   flush: () => Promise<void>
   /** Problems of the last preview build, sent to the AI with each request. */
   getProblems?: () => readonly DesignIssue[]
+  /** Component names locked by the user in the visual CAD editors. */
+  getLockedComponents?: () => readonly string[]
 }
 
 export interface ChatState {
@@ -101,7 +103,7 @@ function reloadAfterAgent(projectId: string, changed: readonly string[]): void {
   if (changed.length > 0) notifyChange(TOPICS.project(projectId), TOPICS.versions(projectId), TOPICS.projects)
 }
 
-export function useChat({ project, runStatus, onApplyProject, flush, getProblems }: UseChatOptions): ChatState {
+export function useChat({ project, runStatus, onApplyProject, flush, getProblems, getLockedComponents }: UseChatOptions): ChatState {
   const projectId = project?.id
   const messages = useLiveData(projectId ? () => messagesRepo.list(projectId) : null, projectId ? [TOPICS.messages(projectId)] : []).data ?? NO_MESSAGES
   const [streamingText, setStreamingText] = useState("")
@@ -168,7 +170,15 @@ export function useChat({ project, runStatus, onApplyProject, flush, getProblems
         const controller = new AbortController()
         abortRef.current = controller
         const scope = { schematicDisabled: current.settings?.schematicDisabled, routingDisabled: current.settings?.routingDisabled }
-        const promptContext = { projectRules: current.settings?.aiRules, projectMemory, globalMemory, library: describeLibrary(library), problems: getProblems?.(), scope }
+        const promptContext = {
+          projectRules: current.settings?.aiRules,
+          projectMemory,
+          globalMemory,
+          library: describeLibrary(library),
+          problems: getProblems?.(),
+          lockedComponents: getLockedComponents?.(),
+          scope,
+        }
         const currentTurn: ChatTurn = { role: "user", content: text, ...(attachments.length > 0 ? { attachments: attachments.map((a) => a.id) } : {}) }
         const turns = [...toTurns(history, settings.historyLimit ?? DEFAULT_HISTORY_LIMIT), currentTurn]
         // Once a chat holds attachments, any later reply may echo them: memory is never saved automatically there.
@@ -277,7 +287,7 @@ export function useChat({ project, runStatus, onApplyProject, flush, getProblems
       }
       return true
     },
-    [applyToProject, getProblems],
+    [applyToProject, getProblems, getLockedComponents],
   )
 
   const send = useCallback(
