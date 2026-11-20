@@ -45,7 +45,7 @@ import { usePreferences } from "./hooks/usePreferences"
 import { useProjects } from "./hooks/useProjects"
 import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
-import { buildIssues, extractIssues, locateComponent, type DesignIssue } from "./lib/drc"
+import { buildIssues, extractIssues, locateComponent, mergeRunWarnings, type DesignIssue } from "./lib/drc"
 import { notifyChange } from "./lib/live-data"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
 import { pinNamesRequest } from "./lib/parts"
@@ -239,8 +239,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const canEditLayout = circuitJson !== null && runStatus.state === "ok"
   const issues = useMemo<DesignIssue[]>(() => {
     if (runStatus.state === "running" || runStatus.state === "idle") return []
-    if (circuitJson) return extractIssues(circuitJson)
-    return buildIssues(runStatus.errors)
+    const base = circuitJson ? extractIssues(circuitJson) : buildIssues(runStatus.errors)
+    return mergeRunWarnings(base, runStatus.warnings)
   }, [circuitJson, runStatus])
   const errorCount = issues.filter((i) => i.severity === "error").length
   problemsRef.current = issues
@@ -275,10 +275,11 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   )
 
   const askAiToFix = useCallback(
-    (errors: DesignIssue[]) => {
+    (selected: DesignIssue[]) => {
       setLeftTab("chat")
-      const lines = errors.map((e) => `${e.message}${e.components.length ? ` [${e.components.join(", ")}]` : ""}`)
-      void chat.send(buildFixRequest(lines))
+      const lines = selected.map((e) => `${e.message}${e.components.length ? ` [${e.components.join(", ")}]` : ""}`)
+      const kind = selected.every((e) => e.severity === "warning") ? "warning" : "error"
+      void chat.send(buildFixRequest(lines, kind))
     },
     [chat],
   )
@@ -361,13 +362,15 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           </button>
           <BuildScopeControls scope={scope} isRunning={runStatus.state === "running"} onToggle={toggleScope} />
           {runStatus.warnings.length > 0 && (
-            <span
-              className="inline-flex h-7 cursor-help items-center gap-1 rounded-lg border border-warn/30 bg-warn/10 px-2 text-xs font-medium text-warn tabular-nums"
+            <button
+              type="button"
+              onClick={() => setLeftTab("problems")}
+              className="inline-flex h-7 items-center gap-1 rounded-lg border border-warn/30 bg-warn/10 px-2 text-xs font-medium text-warn tabular-nums transition hover:bg-warn/20"
               title={runStatus.warnings.join("\n\n")}
             >
               <AlertTriangle size={12} />
               {runStatus.warnings.length} peringatan
-            </span>
+            </button>
           )}
         </div>
 

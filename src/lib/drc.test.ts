@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import circuit from "./__fixtures__/drc-circuit.json"
-import { buildIssues, extractIssues, locateComponent } from "./drc"
+import { buildIssues, extractIssues, locateComponent, mergeRunWarnings } from "./drc"
 
 describe("extractIssues", () => {
   const issues = extractIssues(circuit)
@@ -28,6 +28,13 @@ describe("extractIssues", () => {
 
   it("wraps plain build errors", () => {
     expect(buildIssues(["SyntaxError: x"])[0]).toMatchObject({ severity: "error", category: "build" })
+  })
+
+  it("merges runner warnings without duplicating existing issues", () => {
+    const base = extractIssues([{ type: "pcb_trace_warning", message: "Trace close to edge" }])
+    const merged = mergeRunWarnings(base, ["Trace close to edge", "Runtime warning from runner"])
+    expect(merged).toHaveLength(2)
+    expect(merged[1]).toMatchObject({ severity: "warning", category: "build", message: "Runtime warning from runner" })
   })
 })
 

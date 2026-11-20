@@ -222,9 +222,13 @@ async function buildOnce(files: Record<string, string>, entrypoint: string, opti
     for (const file of circuits) {
       const elements = JSON.parse(await readFile(file, "utf8")) as { type?: string; message?: string }[]
       for (const element of elements) {
-        if (!element.type?.endsWith("_error") || !element.message) continue
-        if (WARNING_MESSAGE.test(element.message)) warnings.push(element.message)
-        else errors.push(`${element.type}: ${element.message}`)
+        if (!element.type || !element.message) continue
+        if (element.type.endsWith("_warning")) {
+          warnings.push(`${element.type}: ${element.message}`)
+        } else if (element.type.endsWith("_error")) {
+          if (WARNING_MESSAGE.test(element.message)) warnings.push(element.message)
+          else errors.push(`${element.type}: ${element.message}`)
+        }
       }
     }
     if (circuits.length === 0) {
@@ -232,7 +236,12 @@ async function buildOnce(files: Record<string, string>, entrypoint: string, opti
       const tail = result.output.trim().split("\n").filter((line) => !/^\s+at /.test(line)).slice(-15).join("\n")
       return { ok: false, errors: [scrub(tail || "Build gagal tanpa keterangan", workDir)], warnings, skipped }
     }
-    return { ok: errors.length === 0, errors: errors.slice(0, MAX_MESSAGES).map((e) => scrub(e, workDir)), warnings: warnings.slice(0, MAX_MESSAGES), skipped }
+    return {
+      ok: errors.length === 0,
+      errors: errors.slice(0, MAX_MESSAGES).map((e) => scrub(e, workDir)),
+      warnings: warnings.slice(0, MAX_MESSAGES).map((w) => scrub(w, workDir)),
+      skipped,
+    }
   } finally {
     clearInterval(ticker)
     await rm(workDir, { recursive: true, force: true })

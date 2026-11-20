@@ -202,8 +202,11 @@ export function buildAgentSystemPrompt(files: ProjectFiles, entrypoint: string, 
   return `${base}\n\n${AGENT_MODE}\n\n## Project files\n${list}`
 }
 
-export function buildFixRequest(errors: readonly string[]): string {
+export function buildFixRequest(errors: readonly string[], kind: "error" | "warning" = "error"): string {
   const list = errors.slice(0, 10).map((error) => `- ${error}`).join("\n")
+  if (kind === "warning") {
+    return `Sirkuit memiliki peringatan berikut. Periksa dan perbaiki penyebabnya bila perlu.\n\n${list}`
+  }
   return `Sirkuit gagal di-build dengan error berikut. Perbaiki kodenya dan kirim ulang file lengkapnya.\n\n${list}`
 }
 

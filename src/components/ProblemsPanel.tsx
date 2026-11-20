@@ -25,8 +25,10 @@ export function ProblemsPanel({ issues, isBuilding, onRevealComponent, onAskAiTo
   const [filter, setFilter] = useState<Filter>("all")
   const [notFound, setNotFound] = useState<string | null>(null)
   const errors = issues.filter((i) => i.severity === "error")
-  const warnings = issues.length - errors.length
+  const warningList = issues.filter((i) => i.severity === "warning")
+  const warnings = warningList.length
   const visible = useMemo(() => (filter === "all" ? issues : issues.filter((i) => i.severity === filter)), [issues, filter])
+  const fixTargets = filter === "warning" ? warningList : errors.length > 0 ? errors : warningList
 
   const reveal = (name: string) => setNotFound(onRevealComponent(name) ? null : name)
 
@@ -52,14 +54,14 @@ export function ProblemsPanel({ issues, isBuilding, onRevealComponent, onAskAiTo
             {label}
           </button>
         ))}
-        {errors.length > 0 && (
+        {fixTargets.length > 0 && (
           <Button
             size="sm"
             variant="primary"
             className="ml-auto"
             disabled={!canAskAi}
-            onClick={() => onAskAiToFix(errors)}
-            title="Kirim semua error ke AI"
+            onClick={() => onAskAiToFix(fixTargets)}
+            title={errors.length > 0 && filter !== "warning" ? "Kirim semua error ke AI" : "Kirim semua peringatan ke AI"}
           >
             <Sparkles size={13} /> Minta AI perbaiki
           </Button>

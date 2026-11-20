@@ -92,6 +92,20 @@ export function buildIssues(messages: readonly string[]): DesignIssue[] {
   return messages.map((message, i) => ({ key: `build:${i}`, severity: "error", category: "build", type: "build_error", message, components: [] }))
 }
 
+/** Appends runner warnings that are not already represented in the extracted issues. */
+export function mergeRunWarnings(issues: readonly DesignIssue[], warnings: readonly string[]): DesignIssue[] {
+  if (warnings.length === 0) return [...issues]
+  const seen = new Set(issues.map((issue) => issue.message.trim()))
+  const extra: DesignIssue[] = []
+  warnings.forEach((raw, index) => {
+    const message = raw.trim()
+    if (!message || seen.has(message)) return
+    seen.add(message)
+    extra.push({ key: `run-warning:${index}`, severity: "warning", category: "build", type: "build_warning", message, components: [] })
+  })
+  return extra.length > 0 ? [...issues, ...extra] : [...issues]
+}
+
 export interface CodeLocation {
   path: string
   line: number
