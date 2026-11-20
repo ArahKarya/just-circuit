@@ -47,7 +47,7 @@ function requestOnce(url: URL, maxBytes: number, signal: AbortSignal, allowPriva
     const client = url.protocol === "https:" ? https : http
     const req = client.get(
       url,
-      { ...(allowPrivate ? {} : { lookup: publicLookup }), signal, headers: { "User-Agent": "CDS-datasheet-fetch", Accept: "application/pdf,*/*;q=0.5" } },
+      { ...(allowPrivate ? {} : { lookup: publicLookup }), signal, headers: { "User-Agent": "Just-Circuit-datasheet-fetch", Accept: "application/pdf,*/*;q=0.5" } },
       (res) => {
         const status = res.statusCode ?? 0
         const contentType = String(res.headers["content-type"] ?? "")

@@ -52,7 +52,7 @@ export async function isDirectory(dir: string): Promise<boolean> {
   }
 }
 
-/** Reads a .cds JSON file, refusing symlinks (they could point at settings.json or sessions.json). */
+/** Reads a .just-circuit JSON file, refusing symlinks (they could point at settings.json or sessions.json). */
 export async function readOwnJson<T>(file: string, fallback: T): Promise<T> {
   const info = await lstat(file).catch(() => null)
   if (!info) return fallback

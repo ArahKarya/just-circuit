@@ -16,7 +16,7 @@ const EDIT_MODE_STATE = { in_edit_mode: true, in_move_footprint_mode: true }
 
 /**
  * Full-size PCB viewer in "move components" mode. runframe's own PCB tab has
- * no way to switch the viewer into this mode, so CDS opens its own.
+ * no way to switch the viewer into this mode, so Just Circuit opens its own.
  */
 export function LayoutEditor({ circuitJson, onMove, onDone }: LayoutEditorProps) {
   const [snapshot] = useState(circuitJson)

@@ -1,4 +1,4 @@
-# Roadmap CDS
+# Roadmap Just Circuit
 
 Status per 16 Nov 2026. Aplikasi hanya versi web. Keputusan: proyek pindah ke penyimpanan server (folder di disk, kompatibel tsci) dengan login satu pengguna.
 
@@ -20,7 +20,7 @@ Status per 16 Nov 2026. Aplikasi hanya versi web. Keputusan: proyek pindah ke pe
 
 ### 1A (selesai 16 Nov 2026)
 
-- [x] Penyimpanan filesystem `CDS_DATA_DIR/workspaces/<workspace>/<proyek>/` (file tsci + `.cds/project.json` + `.cds/chat.json`), hapus = pindah ke `trash/`.
+- [x] Penyimpanan filesystem `JUST_CIRCUIT_DATA_DIR/workspaces/<workspace>/<proyek>/` (file tsci + `.just-circuit/project.json` + `.just-circuit/chat.json`), hapus = pindah ke `trash/`.
 - [x] Login satu pengguna (scrypt, `pnpm set-password`), sesi persisten, cookie httpOnly SameSite=Strict, header CSRF.
 - [x] API key terenkripsi AES-256-GCM di server, tidak pernah dikirim ke browser.
 - [x] Migrasi otomatis IndexedDB → server (sekali per browser, salinan lama tidak dihapus).
@@ -31,7 +31,7 @@ Status per 16 Nov 2026. Aplikasi hanya versi web. Keputusan: proyek pindah ke pe
 - [x] Workspace: buat, ganti nama, hapus (kalau kosong), pindahkan proyek antar workspace (folder ikut pindah di disk).
 - [x] Tempat sampah: daftar, pulihkan ke workspace asal, hapus permanen, kosongkan; otomatis dibersihkan setelah 30 hari.
 - [x] Template proyek: LED, kosong, Raspberry Pi Pico, catu daya 3.3V AMS1117 (file di `templates/`, dicek dengan `tsci build`).
-- [x] Impor ZIP (folder tsci atau unduhan CDS); `node_modules`, `dist`, file biner dilewati.
+- [x] Impor ZIP (folder tsci atau unduhan Just Circuit); `node_modules`, `dist`, file biner dilewati.
 - [x] Cari dan urutkan proyek.
 - [x] Riwayat versi git per proyek: versi otomatis tiap perubahan AI / undo / impor part, "Simpan versi" manual, lihat diff, kembalikan versi (edit tangan disimpan dulu sebagai "Perubahan manual").
 - [x] Penjelajah file: folder, file baru, ganti nama/pindah (file & folder), hapus, jadikan file utama, cari teks di semua file lalu loncat ke barisnya.
@@ -39,7 +39,7 @@ Status per 16 Nov 2026. Aplikasi hanya versi web. Keputusan: proyek pindah ke pe
 
 Rencana awal:
 
-- Antarmuka penyimpanan (repository) dengan backend filesystem: `WORKSPACE_DIR/<workspace>/<proyek>/` berisi file tsci (`index.circuit.tsx`, `package.json`, `manual-edits.json`, `.cds/chat.json`).
+- Antarmuka penyimpanan (repository) dengan backend filesystem: `WORKSPACE_DIR/<workspace>/<proyek>/` berisi file tsci (`index.circuit.tsx`, `package.json`, `manual-edits.json`, `.just-circuit/chat.json`).
 - Login satu pengguna (hash password di `.env`, cookie sesi httpOnly, proteksi CSRF), API key disimpan terenkripsi di server.
 - Migrasi sekali jalan IndexedDB → server.
 - Workspace → Proyek → file; pohon file dengan folder, buat/ganti nama/pindah/hapus file, cari isi semua file.
@@ -67,13 +67,13 @@ Rencana awal:
 
 ## Fase 4 — AI lebih pintar
 
-- [x] Memori AI: memori proyek (`.cds/memory.md`) dan global (`CDS_DATA_DIR/memory.md`), selalu dikirim ke AI; AI mencatat sendiri lewat blok `memory`; bisa diedit di Pengaturan → Memori.
-- [x] Library komponen (`CDS_DATA_DIR/library/`): simpan file/folder ke library (ikon buku di penjelajah file), sisipkan ke proyek lain ke `lib/<nama>/` + import otomatis, AI tahu katalog library; prompt menjelaskan paket `@tsci/...` dan npm.
+- [x] Memori AI: memori proyek (`.just-circuit/memory.md`) dan global (`JUST_CIRCUIT_DATA_DIR/memory.md`), selalu dikirim ke AI; AI mencatat sendiri lewat blok `memory`; bisa diedit di Pengaturan → Memori.
+- [x] Library komponen (`JUST_CIRCUIT_DATA_DIR/library/`): simpan file/folder ke library (ikon buku di penjelajah file), sisipkan ke proyek lain ke `lib/<nama>/` + import otomatis, AI tahu katalog library; prompt menjelaskan paket `@tsci/...` dan npm.
 - [x] Mode agen: AI memakai tools (daftar/baca/cari/tulis/ubah/hapus file, build, cari part JLCPCB); satu versi git per jawaban; langkah tampil di chat.
 - [x] Hasil agen dicek preview browser dan error dikirim balik otomatis; build di server opsional dan di dalam sandbox (sandbox-exec / bwrap, tanpa jaringan, home tidak terbaca, salinan sementara).
 - [x] AI mengusulkan perintah terminal; hanya ditempel ke terminal setelah diklik, Enter ditekan pengguna sendiri.
 - [x] Panel DRC/ERC (tab "Masalah"): error/peringatan PCB, skematik dan rangkaian dari circuit JSON, saring, klik nama komponen untuk loncat ke deklarasinya di kode, "Minta AI perbaiki". Status build di header membuka panel ini.
-- [x] Lampiran di chat: gambar (diperkecil di browser), PDF (utuh ke Claude/Gemini sampai 20 halaman, selain itu teks per halaman lewat `unpdf`), file teks/netlist/KiCad; klip, seret, tempel screenshot; disimpan di `.cds/attachments/`, dihapus bersama chat.
+- [x] Lampiran di chat: gambar (diperkecil di browser), PDF (utuh ke Claude/Gemini sampai 20 halaman, selain itu teks per halaman lewat `unpdf`), file teks/netlist/KiCad; klip, seret, tempel screenshot; disimpan di `.just-circuit/attachments/`, dihapus bersama chat.
 - [x] Board besar: tombol Skematik/Routing per proyek (platformConfig `schematicDisabled`/`routingDisabled` untuk preview, runner bun + core untuk build agen), daftar masalah build terakhir dikirim ke AI.
 - [x] Cari part multi-sumber (katalog datasheet, JLCPCB/LCSC, TI, DigiKey, Mouser, KiCad, registry): tambah dari katalog, simpan ke Library, "Buat dari datasheet" (server unduh PDF ke chat), tool agen search_parts/search_footprints.
 - [x] Footprint `kicad:` di build agen: diunduh di luar sandbox ke cache disk, runner memakainya lewat footprintLibraryMap.

@@ -74,7 +74,7 @@ export default () => (
   </board>
 )
 `
-  await page.request.put(`/api/projects/${id}`, { headers: { "X-CDS-Request": "1" }, data: { entrypoint: project.entrypoint, files: { ...project.files, [project.entrypoint]: board } } })
+  await page.request.put(`/api/projects/${id}`, { headers: { "X-Just-Circuit-Request": "1" }, data: { entrypoint: project.entrypoint, files: { ...project.files, [project.entrypoint]: board } } })
   await page.reload()
   await expect(page.getByText("Build OK", { exact: true })).toBeVisible({ timeout: 60_000 })
 })

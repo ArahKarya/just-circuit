@@ -6,7 +6,7 @@ import { footprintSegments, kicadFootprintsIn, prepareKicadFootprints } from "./
 
 let cacheDir: string
 beforeEach(async () => {
-  cacheDir = await mkdtemp(path.join(tmpdir(), "cds-fp-"))
+  cacheDir = await mkdtemp(path.join(tmpdir(), "just-circuit-fp-"))
 })
 afterEach(async () => {
   vi.unstubAllGlobals()

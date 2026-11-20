@@ -12,14 +12,14 @@ let port: number
 let projectDir: string
 
 beforeAll(async () => {
-  projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "cds-term-")))
+  projectDir = await realpath(await mkdtemp(path.join(tmpdir(), "just-circuit-term-")))
   server = createServer((_req, res) => res.end())
   attachTerminalServer(server, {
     enabled: true,
     shell: "/bin/sh",
     maxSessions: 2,
     hostGuard: { allowedHosts: [], allowAnyHost: false, loginDisabled: false },
-    isSignedIn: async (req) => (req.headers.cookie ?? "").includes("cds_session=ok"),
+    isSignedIn: async (req) => (req.headers.cookie ?? "").includes("just_circuit_session=ok"),
     projectDir: async (id) => {
       if (id !== "p1") throw new Error("unknown")
       return projectDir
@@ -43,7 +43,7 @@ function rejection(ws: WebSocket): Promise<number> {
   return new Promise((resolve) => ws.on("unexpected-response", (_req, res) => resolve(res.statusCode ?? 0)))
 }
 
-const good = { origin: "", cookie: "cds_session=ok" }
+const good = { origin: "", cookie: "just_circuit_session=ok" }
 const originFor = () => `http://127.0.0.1:${port}`
 
 describe("terminal server", () => {
@@ -53,8 +53,8 @@ describe("terminal server", () => {
     expect(await rejection(open("project=nope", { ...good, origin: originFor() }))).toBe(404)
   })
 
-  it("runs commands in the project folder without CDS secrets in the environment", async () => {
-    process.env.CDS_SECRET = "jangan-bocor"
+  it("runs commands in the project folder without Just Circuit secrets in the environment", async () => {
+    process.env.JUST_CIRCUIT_SECRET = "jangan-bocor"
     const ws = open("project=p1", { ...good, origin: originFor() })
     let output = ""
     ws.on("message", (data) => {
@@ -62,9 +62,9 @@ describe("terminal server", () => {
     })
     await new Promise((resolve) => ws.once("open", resolve))
     ws.send(JSON.stringify({ t: "r", c: 120, r: 40 }))
-    ws.send(JSON.stringify({ t: "i", d: 'echo "CWD=$(pwd)"; echo "SECRET=[$CDS_SECRET]"; exit\n' }))
+    ws.send(JSON.stringify({ t: "i", d: 'echo "CWD=$(pwd)"; echo "SECRET=[$JUST_CIRCUIT_SECRET]"; exit\n' }))
     await new Promise((resolve) => ws.once("close", resolve))
-    delete process.env.CDS_SECRET
+    delete process.env.JUST_CIRCUIT_SECRET
     expect(output).toContain(`CWD=${projectDir}`)
     expect(output).toContain("SECRET=[]")
   })
@@ -93,10 +93,10 @@ describe("limits", () => {
 
 describe("helpers", () => {
   it("strips secrets from the shell environment", () => {
-    const env = shellEnv({ PATH: "/bin", CDS_PASSWORD_HASH: "x", OPENAI_API_KEY: "k", GITHUB_TOKEN: "t", HOME: "/h", AWS_SECRET_ACCESS_KEY: "a", DATABASE_URL: "postgres://u:p@h", LC_ALL: "C" })
+    const env = shellEnv({ PATH: "/bin", JUST_CIRCUIT_PASSWORD_HASH: "x", OPENAI_API_KEY: "k", GITHUB_TOKEN: "t", HOME: "/h", AWS_SECRET_ACCESS_KEY: "a", DATABASE_URL: "postgres://u:p@h", LC_ALL: "C" })
     expect(env.PATH).toBe("/bin")
     expect(env.HOME).toBe("/h")
-    expect(env.CDS_PASSWORD_HASH).toBeUndefined()
+    expect(env.JUST_CIRCUIT_PASSWORD_HASH).toBeUndefined()
     expect(env.OPENAI_API_KEY).toBeUndefined()
     expect(env.GITHUB_TOKEN).toBeUndefined()
     expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined()

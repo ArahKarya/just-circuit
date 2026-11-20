@@ -4,7 +4,7 @@ import { errorMessage, logger } from "../logger.js"
 import { readLimited } from "../net/url-guard.js"
 
 /** KiCad footprints converted to circuit JSON by tscircuit (what the browser preview fetches too). */
-const KICAD_FOOTPRINT_BASE = process.env.CDS_E2E === "1" && process.env.CDS_PARTS_TEST_BASE ? `${process.env.CDS_PARTS_TEST_BASE}/kicad` : "https://kicad-mod-cache.tscircuit.com"
+const KICAD_FOOTPRINT_BASE = process.env.JUST_CIRCUIT_E2E === "1" && process.env.JUST_CIRCUIT_PARTS_TEST_BASE ? `${process.env.JUST_CIRCUIT_PARTS_TEST_BASE}/kicad` : "https://kicad-mod-cache.tscircuit.com"
 const MAX_FOOTPRINTS = 100
 const MAX_FOOTPRINT_BYTES = 4 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 15_000

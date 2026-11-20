@@ -6,7 +6,7 @@ import { createSessionStore } from "./sessions"
 
 let dataDir: string
 beforeEach(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "cds-sessions-"))
+  dataDir = await mkdtemp(path.join(tmpdir(), "just-circuit-sessions-"))
 })
 afterEach(() => rm(dataDir, { recursive: true, force: true }))
 

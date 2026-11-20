@@ -169,7 +169,7 @@ export const attachmentsRepo = {
       method: "POST",
       signal,
       credentials: "same-origin",
-      headers: { "X-CDS-Request": "1", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(name) },
+      headers: { "X-Just-Circuit-Request": "1", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(name) },
       body: file,
     })
     const body = (await response.json().catch(() => null)) as { success?: boolean; data?: AttachmentRef; error?: string } | null

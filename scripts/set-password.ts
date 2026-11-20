@@ -1,4 +1,4 @@
-// Prints a CDS_PASSWORD_HASH line for .env. Usage: pnpm set-password
+// Prints a JUST_CIRCUIT_PASSWORD_HASH line for .env. Usage: pnpm set-password
 import { createInterface } from "node:readline/promises"
 import { hashPassword } from "../server/security/password.js"
 
@@ -26,4 +26,4 @@ if ((await readHidden("Ulangi password: ")) !== password) {
   process.exit(1)
 }
 console.log("\nTambahkan baris ini ke .env lalu restart server:\n")
-console.log(`CDS_PASSWORD_HASH='${await hashPassword(password)}'`)
+console.log(`JUST_CIRCUIT_PASSWORD_HASH='${await hashPassword(password)}'`)

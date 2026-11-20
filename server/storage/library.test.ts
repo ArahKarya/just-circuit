@@ -9,7 +9,7 @@ import { InvalidPathError } from "./project-files"
 let dataDir: string
 let store: LibraryStore
 beforeEach(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "cds-lib-"))
+  dataDir = await mkdtemp(path.join(tmpdir(), "just-circuit-lib-"))
   store = createLibraryStore(dataDir)
 })
 afterEach(() => rm(dataDir, { recursive: true, force: true }))

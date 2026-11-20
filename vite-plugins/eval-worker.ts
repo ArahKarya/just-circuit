@@ -28,7 +28,7 @@ export function evalWorkerUrl(): string {
 export function evalWorkerPlugin(): Plugin {
   const url = evalWorkerUrl()
   return {
-    name: "cds-eval-worker",
+    name: "just-circuit-eval-worker",
     configureServer(server) {
       server.middlewares.use(url, (_req, res) => {
         res.setHeader("Content-Type", "text/javascript; charset=utf-8")

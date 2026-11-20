@@ -16,7 +16,7 @@ export interface AuthOptions {
 }
 
 /** Header every state-changing request must carry; browsers can't add it cross-site without CORS. */
-export const CSRF_HEADER = "x-cds-request"
+export const CSRF_HEADER = "x-just-circuit-request"
 
 const loginSchema = z.object({ password: z.string().min(1).max(500) })
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"])

@@ -3,9 +3,9 @@
  * directly (like the browser preview), so the build can skip the schematic or the autorouter,
  * which `tsci build` cannot do for the schematic. Written into the temp build folder.
  */
-export const RUNNER_FILE = ".cds-build-runner.tsx"
+export const RUNNER_FILE = ".just-circuit-build-runner.tsx"
 /** KiCad footprints the server fetched before the build (the sandbox has no network). */
-export const FOOTPRINTS_FILE = ".cds-footprints.json"
+export const FOOTPRINTS_FILE = ".just-circuit-footprints.json"
 
 export const RUNNER_SOURCE = `import { RootCircuit } from "@tscircuit/core"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"

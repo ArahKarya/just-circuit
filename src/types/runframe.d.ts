@@ -1,5 +1,5 @@
 /**
- * Minimal typings for the parts of @tscircuit/runframe that CDS uses.
+ * Minimal typings for the parts of @tscircuit/runframe that Just Circuit uses.
  * The package's own declarations pull in the full tscircuit core sources,
  * which makes `tsc` run out of memory, so tsconfig maps the import here.
  */

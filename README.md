@@ -11,13 +11,13 @@ Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langs
   - Anthropic (Claude) native
   - Google Gemini native
 - **Atur posisi (drag & drop di PCB)**: tombol "Atur posisi" membuka PCB yang bisa diseret. Komponen yang posisinya sudah ditulis di kode (`pcbX`/`pcbY`) diperbarui langsung di kode; komponen lain disimpan ke `manual-edits.json` (format resmi tscircuit, otomatis di-import ke `<board manualEdits={...}>`). Hapus tab `manual-edits.json` untuk mereset posisi manual.
-- **Proyek disimpan di server**: setiap proyek adalah folder biasa di `~/cds-data/workspaces/default/<id-proyek>/` yang bisa langsung dibuka dengan `tsci dev`. Riwayat chat ada di `.cds/chat.json` di folder yang sama. Buat, ganti nama, duplikat, hapus (dipindah ke `~/cds-data/trash/`), unduh ZIP.
+- **Proyek disimpan di server**: setiap proyek adalah folder biasa di `~/just-circuit-data/workspaces/default/<id-proyek>/` yang bisa langsung dibuka dengan `tsci dev`. Riwayat chat ada di `.just-circuit/chat.json` di folder yang sama. Buat, ganti nama, duplikat, hapus (dipindah ke `~/just-circuit-data/trash/`), unduh ZIP.
 - **Penjelajah file**: folder, file baru (`lib/power.tsx`), ganti nama/pindah file dan folder, hapus, jadikan file utama (ikon bintang), dan cari teks di semua file (klik hasil untuk loncat ke barisnya).
 - **Workspace & tempat sampah**: kelompokkan proyek per workspace, pindahkan antar workspace, proyek yang dihapus bisa dipulihkan selama 30 hari. Proyek baru bisa dari template (LED, kosong, Raspberry Pi Pico, catu daya 3.3V) atau impor ZIP.
 - **Board besar: tombol "Skematik" dan "Routing" di header** (disimpan per proyek). Di board ratusan komponen, bagian build paling lama adalah solver kabel skematik (PLC 300 part: ±190 detik), lalu routing PCB (±30 detik); cek penempatan dan netlist saja hanya beberapa detik. Matikan skematik selama mengerjakan PCB, dan matikan routing untuk cek cepat. Pengaturan yang sama dipakai preview browser dan build agen di server. Kalau build sudah 45 detik lebih, header menawarkan "Lama? Matikan skematik". AI selalu menerima daftar masalah build terakhir (maks. 40 baris) dan tahu bagian mana yang sengaja dimatikan.
-- **Cari part** (tombol di header): satu pencarian ke katalog datasheet tscircuit, JLCPCB/LCSC, Texas Instruments, DigiKey, Mouser, footprint resmi KiCad dan registry tscircuit, tidak terikat satu pabrik PCB. Part yang ada di katalog datasheet langsung jadi komponen `lib/parts/<Nama>.tsx` (peta pin, footprint, atribut pin; dibangun CDS dari datanya, bukan dari kode pihak luar) dan bisa disimpan ke Library. Part tanpa file CAD: "Buat dari datasheet" membuat server mengunduh PDF datasheet resmi (hanya alamat publik, port 80/443) ke lampiran chat beserta permintaan untuk AI; AI menyusun peta pin dan memilih footprint KiCad. Impor lengkap JLCPCB (simbol, footprint, 3D) tetap ada di dialog ini. File footprint KiCad sendiri (`.kicad_mod` dari pabrikan, SnapEDA, Ultra Librarian) bisa diunggah: jadi `lib/parts/<Nama>.tsx` + `<Nama>.footprint.json` dengan pin bernomor pad (P1, P2, …), lalu chat disiapkan untuk mengisi nama pin dari datasheet. Agen punya tool `search_parts` dan `search_footprints`; build agen di server memuat footprint `kicad:` dari cache (`CDS_DATA_DIR/cache/kicad-footprints`, diunduh di luar sandbox).
-- **Lampiran di chat**: lampirkan referensi dari luar (gambar skematik, foto board, datasheet PDF, netlist, BOM, file KiCad/Eagle) lewat tombol klip, seret ke panel chat, atau tempel screenshot (Cmd/Ctrl+V), lalu minta "buatkan PCB dari ini". Gambar besar diperkecil di browser (sisi terpanjang 2048 px). PDF sampai 20 halaman dikirim utuh ke Claude/Gemini (gambar dan tabel ikut terbaca); PDF yang lebih panjang dan provider lain menerima teks hasil ekstraksi per halaman. Lampiran disimpan di `.cds/attachments/` proyek (di luar riwayat versi), ikut terkirim di pertanyaan berikutnya selama masih dalam batas riwayat chat, dan terhapus saat riwayat chat dihapus. Batas: 6 file per pesan, gambar 8 MB, PDF 32 MB, teks 2 MB. Memori AI tidak disimpan otomatis dari jawaban yang membaca lampiran.
-- **Mode agen** (tombol "Mode agen" di chat): AI bekerja dengan tools: membaca file yang dibutuhkan saja, mengubah lewat edit kecil, mencari part JLCPCB (nomor LCSC, stok, harga), lalu hasilnya dibangun preview dan error dikirim balik otomatis. Setiap jawaban agen jadi satu versi di Riwayat; langkah-langkahnya bisa dilihat di chat. AI bisa mengusulkan perintah terminal: tombol "Tempel ke terminal" hanya mengetikkannya, kamu yang menekan Enter. Opsional: "Izinkan agen menjalankan build di server" (Pengaturan → AI) menjalankan build (bun + `@tscircuit/core`, mengikuti tombol Skematik/Routing) di sandbox (macOS `sandbox-exec`, Linux `bwrap`) tanpa jaringan dan tanpa akses folder home; runtime `tscircuit`+`react` disiapkan sekali di `CDS_DATA_DIR/build-runtime` (butuh `bun`).
+- **Cari part** (tombol di header): satu pencarian ke katalog datasheet tscircuit, JLCPCB/LCSC, Texas Instruments, DigiKey, Mouser, footprint resmi KiCad dan registry tscircuit, tidak terikat satu pabrik PCB. Part yang ada di katalog datasheet langsung jadi komponen `lib/parts/<Nama>.tsx` (peta pin, footprint, atribut pin; dibangun Just Circuit dari datanya, bukan dari kode pihak luar) dan bisa disimpan ke Library. Part tanpa file CAD: "Buat dari datasheet" membuat server mengunduh PDF datasheet resmi (hanya alamat publik, port 80/443) ke lampiran chat beserta permintaan untuk AI; AI menyusun peta pin dan memilih footprint KiCad. Impor lengkap JLCPCB (simbol, footprint, 3D) tetap ada di dialog ini. File footprint KiCad sendiri (`.kicad_mod` dari pabrikan, SnapEDA, Ultra Librarian) bisa diunggah: jadi `lib/parts/<Nama>.tsx` + `<Nama>.footprint.json` dengan pin bernomor pad (P1, P2, …), lalu chat disiapkan untuk mengisi nama pin dari datasheet. Agen punya tool `search_parts` dan `search_footprints`; build agen di server memuat footprint `kicad:` dari cache (`JUST_CIRCUIT_DATA_DIR/cache/kicad-footprints`, diunduh di luar sandbox).
+- **Lampiran di chat**: lampirkan referensi dari luar (gambar skematik, foto board, datasheet PDF, netlist, BOM, file KiCad/Eagle) lewat tombol klip, seret ke panel chat, atau tempel screenshot (Cmd/Ctrl+V), lalu minta "buatkan PCB dari ini". Gambar besar diperkecil di browser (sisi terpanjang 2048 px). PDF sampai 20 halaman dikirim utuh ke Claude/Gemini (gambar dan tabel ikut terbaca); PDF yang lebih panjang dan provider lain menerima teks hasil ekstraksi per halaman. Lampiran disimpan di `.just-circuit/attachments/` proyek (di luar riwayat versi), ikut terkirim di pertanyaan berikutnya selama masih dalam batas riwayat chat, dan terhapus saat riwayat chat dihapus. Batas: 6 file per pesan, gambar 8 MB, PDF 32 MB, teks 2 MB. Memori AI tidak disimpan otomatis dari jawaban yang membaca lampiran.
+- **Mode agen** (tombol "Mode agen" di chat): AI bekerja dengan tools: membaca file yang dibutuhkan saja, mengubah lewat edit kecil, mencari part JLCPCB (nomor LCSC, stok, harga), lalu hasilnya dibangun preview dan error dikirim balik otomatis. Setiap jawaban agen jadi satu versi di Riwayat; langkah-langkahnya bisa dilihat di chat. AI bisa mengusulkan perintah terminal: tombol "Tempel ke terminal" hanya mengetikkannya, kamu yang menekan Enter. Opsional: "Izinkan agen menjalankan build di server" (Pengaturan → AI) menjalankan build (bun + `@tscircuit/core`, mengikuti tombol Skematik/Routing) di sandbox (macOS `sandbox-exec`, Linux `bwrap`) tanpa jaringan dan tanpa akses folder home; runtime `tscircuit`+`react` disiapkan sekali di `JUST_CIRCUIT_DATA_DIR/build-runtime` (butuh `bun`).
 - **Panel Masalah (DRC/ERC)**: tab "Masalah" (atau klik status build di header) menampilkan error dan peringatan PCB, skematik, dan rangkaian. Klik nama komponen (R1, U1…) untuk loncat ke deklarasinya di kode; tombol "Minta AI perbaiki" mengirim semua error ke AI.
 - **Memori AI**: AI mencatat keputusan penting (pilihan part, pinout, tegangan) ke memori proyek, dan preferensimu ke memori global; keduanya selalu dikirim ke AI dan bisa diedit di Pengaturan → Memori.
 - **Library komponen**: simpan file atau folder (mis. modul catu daya, kanal I/O PLC) ke library lewat ikon buku di penjelajah file, lalu sisipkan ke proyek lain lewat tombol **Library** (disalin ke `lib/<nama>/` dan di-import otomatis). AI mengetahui isi library-mu. Paket registry tscircuit (`@tsci/<author>.<nama>`) dan npm juga bisa di-import langsung di kode.
@@ -33,18 +33,18 @@ Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langs
 ```
 browser (Vite + React 19)                       server (Express 5, kecil)
 ├─ runframe: eval TSX + viewer (web worker)     ├─ /api/auth             → login, sesi (cookie httpOnly)
-├─ Monaco editor                                ├─ /api/projects         → proyek + chat (folder di CDS_DATA_DIR)
+├─ Monaco editor                                ├─ /api/projects         → proyek + chat (folder di JUST_CIRCUIT_DATA_DIR)
 └─ klien API (src/lib/repo.ts)                  ├─ /api/settings         → pengaturan AI, API key terenkripsi AES-256-GCM
                                                 ├─ POST /api/llm/chat    → stream NDJSON dari provider (Vercel AI SDK)
                                                 ├─ POST /api/llm/models  → daftar model provider
                                                 └─ ALL  /api/jlc/proxy   → proxy CORS ke EasyEDA/JLCPCB (allowlist host)
 
-CDS_DATA_DIR (default ~/cds-data)
-├─ workspaces/default/<id-proyek>/   file sirkuit + package.json (tsci) + .cds/{project,chat}.json + .cds/attachments/
+JUST_CIRCUIT_DATA_DIR (default ~/just-circuit-data)
+├─ workspaces/default/<id-proyek>/   file sirkuit + package.json (tsci) + .just-circuit/{project,chat}.json + .just-circuit/attachments/
 ├─ trash/                            proyek yang dihapus
 ├─ settings.json                     pengaturan AI (key terenkripsi)
 ├─ sessions.json                     sesi login (hash token)
-└─ secret.key                        kunci enkripsi (kalau CDS_SECRET tidak diisi)
+└─ secret.key                        kunci enkripsi (kalau JUST_CIRCUIT_SECRET tidak diisi)
 ```
 
 API key tidak pernah dikirim balik ke browser. Browser hanya mengirim id koneksi, lalu server membaca key-nya sendiri.
@@ -64,7 +64,7 @@ Lalu buka **Pengaturan AI** (ikon gerigi), tambahkan koneksi dari preset, isi AP
 Untuk membuka server ke jaringan (mis. Tailscale), pasang password dulu:
 
 ```bash
-pnpm set-password                      # salin baris CDS_PASSWORD_HASH=... ke .env
+pnpm set-password                      # salin baris JUST_CIRCUIT_PASSWORD_HASH=... ke .env
 HOST=0.0.0.0 pnpm start
 ```
 
@@ -82,15 +82,15 @@ pnpm start              # satu proses: API + file statis di API_PORT
 | `API_PORT` | `8787` | Port server API (dev server Vite mem-proxy `/api` ke sini) |
 | `HOST` | `127.0.0.1` (dev) / `0.0.0.0` (prod) | Interface yang didengarkan server |
 | `ALLOW_PRIVATE_LLM_HOSTS` | `true` (dev) / `false` (prod) | Izinkan base URL ke localhost/LAN (perlu untuk Ollama). Biarkan `false` kalau server bisa diakses orang lain, supaya tidak bisa dipakai menembus jaringan internal. |
-| `CDS_DATA_DIR` | `~/cds-data` | Lokasi proyek, chat, pengaturan, sesi |
-| `CDS_PASSWORD_HASH` | kosong | Hash password login dari `pnpm set-password`. Wajib kalau `HOST` bukan 127.0.0.1 |
-| `CDS_SECRET` | kosong | Kunci 32 byte (64 hex) untuk mengenkripsi API key; kalau kosong dibuat otomatis di `CDS_DATA_DIR/secret.key` |
+| `JUST_CIRCUIT_DATA_DIR` | `~/just-circuit-data` | Lokasi proyek, chat, pengaturan, sesi |
+| `JUST_CIRCUIT_PASSWORD_HASH` | kosong | Hash password login dari `pnpm set-password`. Wajib kalau `HOST` bukan 127.0.0.1 |
+| `JUST_CIRCUIT_SECRET` | kosong | Kunci 32 byte (64 hex) untuk mengenkripsi API key; kalau kosong dibuat otomatis di `JUST_CIRCUIT_DATA_DIR/secret.key` |
 | `COOKIE_SECURE` | `false` (dev) / `true` (prod) | Cookie sesi hanya lewat HTTPS. Set `false` kalau produksi diakses lewat HTTP (mis. Tailscale tanpa TLS) |
 | `SESSION_TTL_DAYS` | `30` | Lama sesi login |
 | `ENABLE_TERMINAL` | `true` (dev) / `false` (prod) | Terminal di browser. Tanpa password, program lain di mesin yang sama juga bisa membukanya |
 | `TERMINAL_SHELL` | `$SHELL` | Shell yang dijalankan |
 | `MAX_TERMINALS` | `8` | Jumlah terminal terbuka sekaligus |
-| `CDS_ALLOWED_HOSTS` | kosong | Nama host tambahan yang boleh dipakai membuka CDS (mis. nama Tailscale), dipisah koma |
+| `JUST_CIRCUIT_ALLOWED_HOSTS` | kosong | Nama host tambahan yang boleh dipakai membuka Just Circuit (mis. nama Tailscale), dipisah koma |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Batas request chat/model AI (`/api/llm`) per IP per menit |
 | `JLC_RATE_LIMIT_PER_MINUTE` | `1200` | Batas request proxy part JLCPCB per IP per menit (satu render preview bisa memicu puluhan) |
 
@@ -107,11 +107,11 @@ Tes impor JLCPCB (`e2e/import.spec.ts`) memanggil API jlcsearch/EasyEDA yang asl
 
 - Proxy LLM menolak host privat (kecuali diizinkan), tidak mengikuti redirect, dan membatasi ukuran respons.
 - Proxy JLCPCB hanya ke `easyeda.com`, `lcsc.com`, `jlcpcb.com`, `szlcsc.com` lewat HTTPS.
-- API key disimpan terenkripsi di server dan tidak pernah dikirim ke browser. Kode sirkuit tetap dijalankan di browser; kode jahat bisa memanggil API CDS atas nama sesi yang sedang login, jadi periksa kode dari sumber yang tidak dipercaya sebelum dijalankan.
-- Login satu pengguna dengan cookie httpOnly + SameSite=Strict; setiap request yang mengubah data wajib membawa header `X-CDS-Request` (proteksi CSRF). Tetap disarankan di belakang Tailscale / reverse proxy HTTPS.
+- API key disimpan terenkripsi di server dan tidak pernah dikirim ke browser. Kode sirkuit tetap dijalankan di browser; kode jahat bisa memanggil API Just Circuit atas nama sesi yang sedang login, jadi periksa kode dari sumber yang tidak dipercaya sebelum dijalankan.
+- Login satu pengguna dengan cookie httpOnly + SameSite=Strict; setiap request yang mengubah data wajib membawa header `X-Just-Circuit-Request` (proteksi CSRF). Tetap disarankan di belakang Tailscale / reverse proxy HTTPS.
 - Jalur file proyek divalidasi: tanpa `..`, file tersembunyi, `node_modules/`, `dist/`, `package.json`, atau file konfigurasi tool (supaya kode tulisan AI tidak ikut dijalankan `tsci`), dan tidak menulis lewat symlink yang keluar dari folder proyek.
-- Header `Host` dicek (hanya localhost dan nama di `CDS_ALLOWED_HOSTS`) untuk mencegah DNS rebinding. Tanpa password, request yang lewat proxy/tunnel (`X-Forwarded-For`, `CF-Connecting-IP`) ditolak, dan mode produksi wajib password.
-- Terminal: WebSocket `/api/terminal` hanya diterima dari halaman CDS sendiri (Origin = Host), setelah login dan cek Host; environment shell hanya berisi variabel dasar (PATH, HOME, LANG, …), bukan isi `.env` atau API key. Terminal tetap berarti akses penuh ke mesin untuk pengguna yang login: shell bisa membaca `CDS_DATA_DIR` (termasuk `secret.key`). Di produksi terminal mati kecuali `ENABLE_TERMINAL=true`.
+- Header `Host` dicek (hanya localhost dan nama di `JUST_CIRCUIT_ALLOWED_HOSTS`) untuk mencegah DNS rebinding. Tanpa password, request yang lewat proxy/tunnel (`X-Forwarded-For`, `CF-Connecting-IP`) ditolak, dan mode produksi wajib password.
+- Terminal: WebSocket `/api/terminal` hanya diterima dari halaman Just Circuit sendiri (Origin = Host), setelah login dan cek Host; environment shell hanya berisi variabel dasar (PATH, HOME, LANG, …), bukan isi `.env` atau API key. Terminal tetap berarti akses penuh ke mesin untuk pengguna yang login: shell bisa membaca `JUST_CIRCUIT_DATA_DIR` (termasuk `secret.key`). Di produksi terminal mati kecuali `ENABLE_TERMINAL=true`.
 - Mode agen: kode tulisan AI dianggap tidak tepercaya (bisa dipengaruhi teks dari katalog part atau file impor). Build di server mati secara default; kalau dinyalakan, build jalan di salinan sementara di dalam sandbox OS dan ditolak kalau sandbox tidak tersedia. Memori tidak ditulis otomatis dari jawaban yang membaca data part dari luar.
 - API key tersimpan hanya dikirim ke Base URL tempat key itu disimpan; mengganti Base URL atau jenis API mewajibkan key diisi ulang.
 

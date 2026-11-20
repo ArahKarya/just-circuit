@@ -53,7 +53,7 @@ const STATUS_STYLES: Record<RunStatus["state"], { label: string; className: stri
 /** Root: login (when the server requires it), then the studio. */
 export function App() {
   const auth = useAuth()
-  if (auth.error && !auth.status) return <CenteredMessage tone="error">Server CDS tidak bisa dihubungi: {auth.error}</CenteredMessage>
+  if (auth.error && !auth.status) return <CenteredMessage tone="error">Server Just Circuit tidak bisa dihubungi: {auth.error}</CenteredMessage>
   if (!auth.status) return <CenteredMessage>Menghubungkan ke server…</CenteredMessage>
   if (!auth.status.authenticated) return <LoginScreen onLogin={auth.login} />
   return <Studio onLogout={auth.status.authRequired ? () => void auth.logout() : undefined} />

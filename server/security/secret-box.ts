@@ -36,11 +36,11 @@ export function createSecretBox(key: Buffer): SecretBox {
 function parseKey(value: string): Buffer {
   const trimmed = value.trim()
   const key = /^[0-9a-f]{64}$/i.test(trimmed) ? Buffer.from(trimmed, "hex") : Buffer.from(trimmed, "base64")
-  if (key.length !== KEY_BYTES) throw new Error("CDS_SECRET must be 32 bytes (64 hex characters or base64)")
+  if (key.length !== KEY_BYTES) throw new Error("JUST_CIRCUIT_SECRET must be 32 bytes (64 hex characters or base64)")
   return key
 }
 
-/** Uses CDS_SECRET when set, otherwise a key file generated once inside the data dir (mode 600). */
+/** Uses JUST_CIRCUIT_SECRET when set, otherwise a key file generated once inside the data dir (mode 600). */
 export async function loadSecretKey(configured: string, dataDir: string): Promise<Buffer> {
   if (configured) return parseKey(configured)
   const file = path.join(dataDir, "secret.key")

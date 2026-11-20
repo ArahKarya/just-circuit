@@ -1,6 +1,6 @@
 import type { Request } from "express"
 
-export const SESSION_COOKIE = "cds_session"
+export const SESSION_COOKIE = "just_circuit_session"
 
 /** Minimal Cookie header parser (we only read our own session cookie). */
 export function readCookie(req: Pick<Request, "headers">, name: string): string | undefined {

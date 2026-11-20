@@ -135,7 +135,7 @@ function ensureRuntime(runtimeDir: string): Promise<void> {
   runtimeReady ??= (async () => {
     if (existsSync(path.join(runtimeDir, "node_modules", "@tscircuit", "core")) && existsSync(path.join(runtimeDir, "node_modules", "react"))) return
     await mkdir(runtimeDir, { recursive: true })
-    await writeFile(path.join(runtimeDir, "package.json"), `${JSON.stringify({ name: "cds-build-runtime", private: true }, null, 2)}\n`)
+    await writeFile(path.join(runtimeDir, "package.json"), `${JSON.stringify({ name: "just-circuit-build-runtime", private: true }, null, 2)}\n`)
     logger.info("installing build runtime", { runtimeDir })
     const result = await run("bun", ["add", "tscircuit", "react"], runtimeDir, shellEnv(process.env), INSTALL_TIMEOUT_MS)
     if (result.missing) throw new Error("bun tidak terpasang di server")
@@ -179,10 +179,10 @@ async function buildOnce(files: Record<string, string>, entrypoint: string, opti
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Runtime build tidak siap")
   }
-  const workDir = await realpath(await mkdtemp(path.join(await realpath(tmpdir()), "cds-build-")))
+  const workDir = await realpath(await mkdtemp(path.join(await realpath(tmpdir()), "just-circuit-build-")))
   const ticker = setInterval(options.keepAlive, 5_000)
   try {
-    // Only the project's editable files: no .cds data, no stale node_modules, no configs.
+    // Only the project's editable files: no .just-circuit data, no stale node_modules, no configs.
     for (const [file, content] of Object.entries(files)) {
       if (!isEditablePath(file)) continue
       await mkdir(path.dirname(path.join(workDir, file)), { recursive: true })

@@ -13,7 +13,7 @@ test("lists DRC/ERC problems, jumps to the component and asks the AI to fix them
   await page.goto("/")
   await expect(page.getByText("Build OK", { exact: true })).toBeVisible({ timeout: 60_000 })
   const projects = (await (await page.request.get("/api/projects")).json()).data as { id: string }[]
-  await page.request.put(`/api/projects/${projects[0].id}`, { headers: { "X-CDS-Request": "1" }, data: { entrypoint: "index.circuit.tsx", files: { "index.circuit.tsx": BROKEN_LAYOUT } } })
+  await page.request.put(`/api/projects/${projects[0].id}`, { headers: { "X-Just-Circuit-Request": "1" }, data: { entrypoint: "index.circuit.tsx", files: { "index.circuit.tsx": BROKEN_LAYOUT } } })
   await page.reload()
   await expect(page.getByRole("button", { name: "Build error" })).toBeVisible({ timeout: 90_000 })
 

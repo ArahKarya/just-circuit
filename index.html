@@ -9,7 +9,7 @@
     <script>
       // Apply the last theme before the app loads, so a light theme doesn't flash dark.
       try {
-        document.documentElement.dataset.theme = localStorage.getItem("cds.theme") === "light" ? "light" : "dark"
+        document.documentElement.dataset.theme = (localStorage.getItem("just-circuit.theme") ?? localStorage.getItem("cds.theme")) === "light" ? "light" : "dark"
       } catch {}
     </script>
   </head>

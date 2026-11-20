@@ -15,7 +15,9 @@ interface BackupTabProps {
 const BACKUP_VERSION = 1
 
 const backupSchema = z.object({
-  cds: z.literal("settings-backup"),
+  /** Backups made when the app was called CDS carry `cds` instead. */
+  justCircuit: z.literal("settings-backup").optional(),
+  cds: z.literal("settings-backup").optional(),
   version: z.literal(BACKUP_VERSION),
   ai: z.object({
     activeConnectionId: z.string().nullable(),
@@ -27,12 +29,12 @@ const backupSchema = z.object({
     connections: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(["openai-compatible", "anthropic", "gemini"]), baseUrl: z.string(), model: z.string() }).passthrough()),
   }),
   preferences: z.record(z.string(), z.unknown()),
-})
+}).refine((backup) => backup.justCircuit || backup.cds, "Bukan file backup Just Circuit")
 
 /** Settings without API keys, as a downloadable JSON file. */
 function backupJson(ai: AiSettings, preferences: Preferences): string {
   const connections = ai.connections.map(({ apiKey: _key, hasApiKey: _has, clearApiKey: _clear, ...rest }) => rest)
-  return JSON.stringify({ cds: "settings-backup", version: BACKUP_VERSION, exportedAt: new Date().toISOString(), ai: { ...ai, connections }, preferences }, null, 2)
+  return JSON.stringify({ justCircuit: "settings-backup", version: BACKUP_VERSION, exportedAt: new Date().toISOString(), ai: { ...ai, connections }, preferences }, null, 2)
 }
 
 export function BackupTab({ ai, preferences, onImport }: BackupTabProps) {
@@ -43,7 +45,7 @@ export function BackupTab({ ai, preferences, onImport }: BackupTabProps) {
     const url = URL.createObjectURL(new Blob([backupJson(ai, preferences)], { type: "application/json" }))
     const link = document.createElement("a")
     link.href = url
-    link.download = `cds-pengaturan-${new Date().toISOString().slice(0, 10)}.json`
+    link.download = `just-circuit-pengaturan-${new Date().toISOString().slice(0, 10)}.json`
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
@@ -55,7 +57,7 @@ export function BackupTab({ ai, preferences, onImport }: BackupTabProps) {
       onImport({ ...parsed.ai, connections }, withDefaults(parsed.preferences as Partial<Preferences>))
       setMessage({ ok: true, text: `${connections.length} koneksi dan preferensi dimuat. Klik Simpan, lalu isi ulang API key-nya.` })
     } catch {
-      setMessage({ ok: false, text: "File bukan cadangan pengaturan CDS yang valid." })
+      setMessage({ ok: false, text: "File bukan cadangan pengaturan Just Circuit yang valid." })
     }
   }
 

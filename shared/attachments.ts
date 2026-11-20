@@ -52,7 +52,7 @@ export function extensionOf(name: string): string {
   return match ? match[0] : ""
 }
 
-/** Kind of a file from its name, or null when CDS can't send it to the AI. */
+/** Kind of a file from its name, or null when Just Circuit can't send it to the AI. */
 export function kindFromName(name: string): AttachmentKind | null {
   const ext = extensionOf(name)
   if (ext in IMAGE_MEDIA_TYPES) return "image"

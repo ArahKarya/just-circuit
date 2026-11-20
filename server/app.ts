@@ -75,7 +75,7 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   // Everything below needs a session (when a password is set).
   app.use("/api", auth.requireSession)
   if (config.isE2e) {
-    // Test-only (index.ts refuses CDS_E2E outside a loopback dev server): wipe stored data between E2E tests.
+    // Test-only (index.ts refuses JUST_CIRCUIT_E2E outside a loopback dev server): wipe stored data between E2E tests.
     app.post("/api/test/reset", auth.requireCsrfHeader, (_req, res, next) => {
       Promise.all(["workspaces", "trash", "settings.json", "preferences.json", "memory.md", "library"].map((name) => rm(path.join(config.dataDir, name), { recursive: true, force: true })))
         .then(() => res.json({ success: true, data: null }), next)

@@ -53,7 +53,7 @@ export function AiTab({ draft, setDraft }: AiTabProps) {
       <div className="flex flex-col gap-5">
         <p className="flex gap-2 rounded-md border border-line bg-raised p-3 text-xs text-muted">
           <ShieldAlert size={16} className="shrink-0 text-accent" />
-          API key disimpan terenkripsi di server CDS dan tidak pernah dikirim balik ke browser. Kolom key kosong berarti key yang tersimpan tetap dipakai.
+          API key disimpan terenkripsi di server Just Circuit dan tidak pernah dikirim balik ke browser. Kolom key kosong berarti key yang tersimpan tetap dipakai.
         </p>
 
         <section className="space-y-2">

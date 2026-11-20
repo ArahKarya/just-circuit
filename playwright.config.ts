@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test"
 
-/** E2E runs its own servers with a throwaway data dir, never the developer's ~/cds-data. */
+/** E2E runs its own servers with a throwaway data dir, never the developer's ~/just-circuit-data. */
 const WEB_PORT = 5181
 const API_PORT = 8788
 
@@ -18,7 +18,7 @@ export default defineConfig({
       port: WEB_PORT,
       reuseExistingServer: false,
       timeout: 90_000,
-      env: { CDS_E2E: "1", CDS_PARTS_TEST_BASE: "http://localhost:9911/parts", CDS_DATA_DIR: ".e2e-data", API_PORT: String(API_PORT), VITE_PORT: String(WEB_PORT), CDS_PASSWORD_HASH: "" },
+      env: { JUST_CIRCUIT_E2E: "1", JUST_CIRCUIT_PARTS_TEST_BASE: "http://localhost:9911/parts", JUST_CIRCUIT_DATA_DIR: ".e2e-data", API_PORT: String(API_PORT), VITE_PORT: String(WEB_PORT), JUST_CIRCUIT_PASSWORD_HASH: "" },
     },
   ],
 })

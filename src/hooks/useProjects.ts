@@ -5,8 +5,9 @@ import { DEFAULT_ENTRYPOINT } from "../lib/project-ops"
 import { DEFAULT_TEMPLATE_ID, findTemplate } from "../lib/templates"
 import { projectsRepo, TOPICS, type ProjectInput } from "../lib/repo"
 import type { Project, ProjectSummary } from "../lib/types"
+import { STORAGE_KEYS } from "../lib/storage-keys"
 
-const ACTIVE_KEY = "cds.activeProjectId"
+const ACTIVE_KEY = STORAGE_KEYS.activeProject
 
 function readActiveId(): string | null {
   try {

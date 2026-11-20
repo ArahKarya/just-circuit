@@ -3,7 +3,7 @@ import { PART_SOURCES, type PartHit, type PartSearchResult, type PartSource } fr
 import { readLimited } from "../net/url-guard.js"
 
 /** E2E runs point every source at the local mock (only honoured in E2E mode). */
-const TEST_BASE = process.env.CDS_E2E === "1" ? process.env.CDS_PARTS_TEST_BASE : undefined
+const TEST_BASE = process.env.JUST_CIRCUIT_E2E === "1" ? process.env.JUST_CIRCUIT_PARTS_TEST_BASE : undefined
 
 /** Public tscircuit services (the same ones `tsci search` uses). */
 export const ENDPOINTS = {

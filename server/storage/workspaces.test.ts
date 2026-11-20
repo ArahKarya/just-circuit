@@ -12,7 +12,7 @@ let projects: ProjectStore
 let workspaces: WorkspaceStore
 
 beforeEach(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "cds-ws-"))
+  dataDir = await mkdtemp(path.join(tmpdir(), "just-circuit-ws-"))
   projects = createProjectStore(dataDir)
   workspaces = createWorkspaceStore(projects)
 })

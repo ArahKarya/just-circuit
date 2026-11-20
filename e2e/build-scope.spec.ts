@@ -34,7 +34,7 @@ test("the schematic and PCB routing can be switched off per project; the AI hear
 
   // Placement checks still run without routing, and the AI gets the problem list and the scope.
   const projects = (await (await page.request.get("/api/projects")).json()).data as { id: string }[]
-  await page.request.put(`/api/projects/${projects[0].id}`, { headers: { "X-CDS-Request": "1" }, data: { entrypoint: "index.circuit.tsx", files: { "index.circuit.tsx": OVERLAP } } })
+  await page.request.put(`/api/projects/${projects[0].id}`, { headers: { "X-Just-Circuit-Request": "1" }, data: { entrypoint: "index.circuit.tsx", files: { "index.circuit.tsx": OVERLAP } } })
   await page.reload()
   await expect(page.getByRole("button", { name: "Build error" })).toBeVisible({ timeout: 60_000 })
   await page.getByRole("button", { name: "Build error" }).click()

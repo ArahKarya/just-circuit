@@ -16,21 +16,21 @@ import { attachTerminalServer } from "./terminal/terminal-server.js"
 
 function checkAuthConfig(): void {
   if (config.passwordHash && !isPasswordHash(config.passwordHash)) {
-    logger.error("CDS_PASSWORD_HASH is not a valid hash; create one with `pnpm set-password`")
+    logger.error("JUST_CIRCUIT_PASSWORD_HASH is not a valid hash; create one with `pnpm set-password`")
     process.exit(1)
   }
   // Without a password anyone who can reach the server can read projects and use the API keys.
   if (!config.passwordHash && !config.isLoopbackOnly) {
-    logger.error("Refusing to listen on a non-loopback host without a password. Run `pnpm set-password` and set CDS_PASSWORD_HASH.", { host: config.host })
+    logger.error("Refusing to listen on a non-loopback host without a password. Run `pnpm set-password` and set JUST_CIRCUIT_PASSWORD_HASH.", { host: config.host })
     process.exit(1)
   }
   // Production usually sits behind a tunnel or proxy, where "loopback" says nothing about who connects.
   if (!config.passwordHash && config.isProduction) {
-    logger.error("Production needs a password. Run `pnpm set-password` and set CDS_PASSWORD_HASH.")
+    logger.error("Production needs a password. Run `pnpm set-password` and set JUST_CIRCUIT_PASSWORD_HASH.")
     process.exit(1)
   }
   if (config.isE2e && (config.isProduction || !config.isLoopbackOnly)) {
-    logger.error("CDS_E2E=1 is for the local test server only")
+    logger.error("JUST_CIRCUIT_E2E=1 is for the local test server only")
     process.exit(1)
   }
 }
@@ -50,7 +50,7 @@ if (purged > 0) logger.info("trash emptied", { purged })
 const app = createApp({ auth, projects, settings: createSettingsStore(config.dataDir, box), workspaces: createWorkspaceStore(projects), preferences: createPreferencesStore(config.dataDir), memory: createGlobalMemoryStore(config.dataDir), library: createLibraryStore(config.dataDir) })
 
 const server = app.listen(config.port, config.host, () => {
-  logger.info("CDS API listening", {
+  logger.info("Just Circuit API listening", {
     host: config.host,
     port: config.port,
     production: config.isProduction,
@@ -62,7 +62,7 @@ const server = app.listen(config.port, config.host, () => {
 })
 
 if (config.enableTerminal && !auth.isEnabled) {
-  logger.warn("Terminal is on without a password: any program or user on this machine that can reach the port can open a shell. Set CDS_PASSWORD_HASH (pnpm set-password) on shared machines.")
+  logger.warn("Terminal is on without a password: any program or user on this machine that can reach the port can open a shell. Set JUST_CIRCUIT_PASSWORD_HASH (pnpm set-password) on shared machines.")
 }
 
 attachTerminalServer(server, {

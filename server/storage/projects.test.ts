@@ -10,7 +10,7 @@ let dataDir: string
 let store: ProjectStore
 
 beforeEach(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "cds-store-"))
+  dataDir = await mkdtemp(path.join(tmpdir(), "just-circuit-store-"))
   store = createProjectStore(dataDir)
 })
 afterEach(() => rm(dataDir, { recursive: true, force: true }))
@@ -38,13 +38,13 @@ describe("project store", () => {
 
   it("rejects paths outside the project or of other types", async () => {
     const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "1" } })
-    for (const bad of ["../x.tsx", "/etc/passwd.tsx", ".cds/project.json", "a/../../b.tsx", "run.sh", "package.json", "node_modules/tscircuit/index.js", "dist/x.js", "lib/package.json", "tscircuit.config.ts", "vite.config.js"]) {
+    for (const bad of ["../x.tsx", "/etc/passwd.tsx", ".just-circuit/project.json", "a/../../b.tsx", "run.sh", "package.json", "node_modules/tscircuit/index.js", "dist/x.js", "lib/package.json", "tscircuit.config.ts", "vite.config.js"]) {
       await expect(store.update(id, { files: { [ENTRY]: "1", [bad]: "x" } })).rejects.toBeInstanceOf(InvalidPathError)
     }
   })
 
   it("refuses to write through a symlinked folder", async () => {
-    const outside = await mkdtemp(path.join(tmpdir(), "cds-outside-"))
+    const outside = await mkdtemp(path.join(tmpdir(), "just-circuit-outside-"))
     const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "1" } })
     await symlink(outside, path.join(dataDir, "workspaces", "default", id, "lib"))
     await expect(store.update(id, { files: { [ENTRY]: "1", "lib/x.json": "{}" } })).rejects.toBeInstanceOf(InvalidPathError)
@@ -52,9 +52,9 @@ describe("project store", () => {
     await rm(outside, { recursive: true, force: true })
   })
 
-  it("does not follow a symlinked .cds/project.json", async () => {
+  it("does not follow a symlinked .just-circuit/project.json", async () => {
     const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "1" } })
-    const meta = path.join(dataDir, "workspaces", "default", id, ".cds", "project.json")
+    const meta = path.join(dataDir, "workspaces", "default", id, ".just-circuit", "project.json")
     await writeFile(path.join(dataDir, "settings.json"), '{"secret":"x"}')
     await rm(meta)
     await symlink(path.join(dataDir, "settings.json"), meta)
@@ -75,7 +75,7 @@ describe("project store", () => {
     expect((await readdir(path.join(dataDir, "trash")))[0]).toContain(id)
   })
 
-  it("keeps the AI memory in .cds and out of the editor", async () => {
+  it("keeps the AI memory in .just-circuit and out of the editor", async () => {
     const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "1" } })
     expect(await store.readMemory(id)).toBe("")
     await store.writeMemory(id, "- LDO terpisah\n")
@@ -87,7 +87,7 @@ describe("project store", () => {
     const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "1" } })
     await store.changeMessages(id, (m) => [...m, { id: "m1", projectId: id, role: "user", content: "hai", createdAt: 1 }])
     expect((await store.messages(id)).map((m) => m.content)).toEqual(["hai"])
-    expect((await stat(path.join(dataDir, "workspaces", "default", id, ".cds", "chat.json"))).isFile()).toBe(true)
+    expect((await stat(path.join(dataDir, "workspaces", "default", id, ".just-circuit", "chat.json"))).isFile()).toBe(true)
   })
 
   it("serializes concurrent updates", async () => {

@@ -20,7 +20,7 @@ describe("hostGuard", () => {
 
   it("blocks DNS-rebinding hosts and allows configured names", () => {
     expect(run(local, { host: "evil.example:8787" }).status).toBe(421)
-    expect(run({ ...local, allowedHosts: ["cds.tailnet.ts.net"] }, { host: "cds.tailnet.ts.net" }).next).toHaveBeenCalled()
+    expect(run({ ...local, allowedHosts: ["just-circuit.tailnet.ts.net"] }, { host: "just-circuit.tailnet.ts.net" }).next).toHaveBeenCalled()
   })
 
   it("refuses proxied requests while login is off", () => {

@@ -91,7 +91,7 @@ export function buildCatalogTsx(entry: CatalogEntry, options: CatalogOptions = {
     `{...props}`,
   ].filter(Boolean)
   const tsx = [
-    `// ${mpn}: dibuat CDS dari katalog datasheet tscircuit. Cek peta pin dengan datasheet sebelum produksi.`,
+    `// ${mpn}: dibuat Just Circuit dari katalog datasheet tscircuit. Cek peta pin dengan datasheet sebelum produksi.`,
     `import type { ChipProps } from "tscircuit"`,
     ``,
     `const pinLabels = {`,

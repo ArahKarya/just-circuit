@@ -35,7 +35,7 @@ test("runs commands in the project folder and shows files they create in the edi
 
   // The shell does not see server secrets.
   await terminal.click()
-  await page.keyboard.type('echo "rahasia=[$CDS_E2E]"\n')
+  await page.keyboard.type('echo "rahasia=[$JUST_CIRCUIT_E2E]"\n')
   await expect(terminal).toContainText("rahasia=[]")
 
   await page.getByRole("button", { name: "Tutup panel terminal" }).click()

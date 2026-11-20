@@ -8,14 +8,14 @@ import type { FileMap } from "./project-files.js"
 
 const run = promisify(execFile)
 
-/** Hooks, signing and user config never apply to CDS's own commits. */
-const GIT_FLAGS = ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "user.name=CDS", "-c", "user.email=cds@localhost", "-c", "core.quotepath=off"]
-/** Ignore system and global git config (autocrlf, templates, aliases): CDS commits must be predictable. */
+/** Hooks, signing and user config never apply to Just Circuit's own commits. */
+const GIT_FLAGS = ["-c", "core.hooksPath=/dev/null", "-c", "commit.gpgsign=false", "-c", "user.name=Just Circuit", "-c", "user.email=just-circuit@localhost", "-c", "core.quotepath=off"]
+/** Ignore system and global git config (autocrlf, templates, aliases): Just Circuit commits must be predictable. */
 const GIT_ENV = { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" }
 const MAX_OUTPUT = 32 * 1024 * 1024
 const MAX_DIFF_CHARS = 300_000
 const SHA = /^[0-9a-f]{7,40}$/
-const IGNORE = ["node_modules/", "dist/", ".cds/", "*.log", ".DS_Store", ""].join("\n")
+const IGNORE = ["node_modules/", "dist/", ".just-circuit/", "*.log", ".DS_Store", ""].join("\n")
 
 export class HistoryUnavailableError extends Error {}
 

@@ -51,7 +51,7 @@ export interface CatalogPart {
   footprint: string | null
   datasheetUrls: string[]
   componentName: string
-  /** TSX of lib/parts/<componentName>.tsx, built by CDS from the catalog data. */
+  /** TSX of lib/parts/<componentName>.tsx, built by Just Circuit from the catalog data. */
   tsx: string
   /** Pins the catalog lists that couldn't be mapped to pinN labels (e.g. "EP"). */
   skippedPins: string[]

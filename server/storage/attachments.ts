@@ -136,13 +136,13 @@ export type AttachmentStore = ReturnType<typeof createAttachmentStore>
 
 const FILE_NAME = /^([0-9a-f-]{36})\.(json|bin|txt)$/
 
-/** Attachments live in <project>/.cds/attachments: outside version history, removed with the chat. */
+/** Attachments live in <project>/.just-circuit/attachments: outside version history, removed with the chat. */
 export function createAttachmentStore(projects: Pick<ProjectStore, "pathOf" | "withProject" | "messages">) {
-  /** The attachments folder; refuses a .cds or attachments folder that is a symlink (it could point anywhere). */
+  /** The attachments folder; refuses a .just-circuit or attachments folder that is a symlink (it could point anywhere). */
   async function folderIn(projectDir: string, create: boolean): Promise<string | null> {
-    const cds = path.join(projectDir, ".cds")
-    if (!(await isDirectory(cds))) throw new Error("Folder .cds proyek bukan folder biasa")
-    const dir = path.join(cds, "attachments")
+    const metaDir = path.join(projectDir, ".just-circuit")
+    if (!(await isDirectory(metaDir))) throw new Error("Folder .just-circuit proyek bukan folder biasa")
+    const dir = path.join(metaDir, "attachments")
     const info = await lstat(dir).catch(() => null)
     if (info && !info.isDirectory()) throw new Error("Folder lampiran bukan folder biasa")
     if (info) return dir

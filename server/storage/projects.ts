@@ -47,7 +47,7 @@ export interface ChatMessageRecord {
   previousFiles?: FileMap
   isError?: boolean
   toolSteps?: { name: string; detail: string; ok?: boolean; result?: string }[]
-  /** Files the user attached to this message (stored in .cds/attachments). */
+  /** Files the user attached to this message (stored in .just-circuit/attachments). */
   attachments?: AttachmentRef[]
 }
 
@@ -71,8 +71,8 @@ export interface ProjectPatch {
 
 const MANUAL_CHANGES = "Perubahan manual"
 const OUTSIDE_CHANGES = "Perubahan di luar editor"
-/** Hashes of the files CDS itself last wrote, to tell editor autosaves from terminal edits. */
-const SYNC_FILE = path.join(".cds", "synced.json")
+/** Hashes of the files Just Circuit itself last wrote, to tell editor autosaves from terminal edits. */
+const SYNC_FILE = path.join(".just-circuit", "synced.json")
 
 function hashFiles(files: FileMap): Record<string, string> {
   return Object.fromEntries(Object.entries(files).map(([file, content]) => [file, createHash("sha1").update(content).digest("hex")]))
@@ -82,7 +82,7 @@ async function rememberSync(dir: string, files: FileMap): Promise<void> {
   await writeJsonFile(path.join(dir, SYNC_FILE), hashFiles(files))
 }
 
-/** True when the files on disk differ from what CDS last wrote (someone used the terminal or tsci). */
+/** True when the files on disk differ from what Just Circuit last wrote (someone used the terminal or tsci). */
 async function changedOutsideEditor(dir: string): Promise<boolean> {
   const remembered = await readOwnJson<Record<string, string> | null>(path.join(dir, SYNC_FILE), null).catch(() => null)
   if (!remembered) return false
@@ -95,9 +95,9 @@ export { NotFoundError } from "./errors.js"
 
 export const DEFAULT_WORKSPACE = "default"
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,80}$/
-const META_FILE = path.join(".cds", "project.json")
+const META_FILE = path.join(".just-circuit", "project.json")
 /** Written into a project when it is moved to the trash, so it can go back where it came from. */
-const TRASH_INFO_FILE = path.join(".cds", "trash.json")
+const TRASH_INFO_FILE = path.join(".just-circuit", "trash.json")
 const TRASH_ENTRY = /^(\d{10,16})-([a-z0-9][a-z0-9-]{0,120})$/
 /** Trash entries older than this are removed when the server starts. */
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
@@ -115,8 +115,8 @@ interface TrashInfo {
   workspaceId: string
   deletedAt: number
 }
-const CHAT_FILE = path.join(".cds", "chat.json")
-const MEMORY_FILE = path.join(".cds", "memory.md")
+const CHAT_FILE = path.join(".just-circuit", "chat.json")
+const MEMORY_FILE = path.join(".just-circuit", "memory.md")
 export const MAX_MEMORY_CHARS = 8000
 
 export function isValidId(id: string): boolean {
@@ -148,7 +148,7 @@ function assertEntrypoint(entrypoint: string, files: FileMap | undefined): void 
 
 /**
  * Projects stored as plain folders: dataDir/workspaces/<workspace>/<id>/ holds the
- * circuit files (usable with `tsci`), and .cds/ holds metadata and chat history.
+ * circuit files (usable with `tsci`), and .just-circuit/ holds metadata and chat history.
  */
 export function createProjectStore(dataDir: string) {
   const workspacesDir = path.join(dataDir, "workspaces")
@@ -192,7 +192,7 @@ export function createProjectStore(dataDir: string) {
           const projectDir = path.join(dir, entry.name)
           metas.push({ ...(await readMeta(projectDir)), fileCount: (await listEditableFiles(projectDir)).length })
         } catch {
-          // Not a CDS project (e.g. a folder made in the terminal); skip it.
+          // Not a Just Circuit project (e.g. a folder made in the terminal); skip it.
         }
       }
     }
@@ -238,7 +238,7 @@ export function createProjectStore(dataDir: string) {
       for (const [file, content] of Object.entries(scaffoldFiles(meta))) {
         await writeJsonFile(path.join(dir, file), content)
       }
-      await mkdir(path.join(dir, ".cds"))
+      await mkdir(path.join(dir, ".just-circuit"))
       await writeJsonFile(path.join(dir, META_FILE), meta)
       await rememberSync(dir, input.files)
     } catch (error) {

@@ -24,7 +24,7 @@ let server: Server
 let base: string
 
 beforeAll(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "cds-app-"))
+  dataDir = await mkdtemp(path.join(tmpdir(), "just-circuit-app-"))
   const auth = createAuth({
     passwordHash: await hashPassword(PASSWORD),
     sessions: createSessionStore(dataDir, 60_000),
@@ -43,7 +43,7 @@ afterAll(async () => {
   await rm(dataDir, { recursive: true, force: true })
 })
 
-const csrf = { "X-CDS-Request": "1", "Content-Type": "application/json" }
+const csrf = { "X-Just-Circuit-Request": "1", "Content-Type": "application/json" }
 
 async function login(password: string): Promise<Response> {
   return fetch(`${base}/api/auth/login`, { method: "POST", headers: csrf, body: JSON.stringify({ password }) })
@@ -64,7 +64,7 @@ describe("API with a password", () => {
     const ok = await login(PASSWORD)
     expect(ok.status).toBe(200)
     const cookie = ok.headers.get("set-cookie") ?? ""
-    expect(cookie).toMatch(/cds_session=/)
+    expect(cookie).toMatch(/just_circuit_session=/)
     expect(cookie).toMatch(/HttpOnly/i)
     expect(cookie).toMatch(/SameSite=Strict/i)
 
@@ -94,9 +94,9 @@ describe("chat attachments", () => {
     const created = await (await fetch(`${base}/api/projects`, { method: "POST", headers: json, body: JSON.stringify({ name: "Lampiran", entrypoint: "index.circuit.tsx", files: { "index.circuit.tsx": "1" } }) })).json()
     const url = `${base}/api/projects/${created.data.id}/attachments`
     const upload = (body: Buffer, name: string, headers: Record<string, string> = {}) =>
-      fetch(url, { method: "POST", headers: { cookie, "X-CDS-Request": "1", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(name), ...headers }, body: new Uint8Array(body) })
+      fetch(url, { method: "POST", headers: { cookie, "X-Just-Circuit-Request": "1", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(name), ...headers }, body: new Uint8Array(body) })
 
-    expect((await upload(TINY_PNG, "skema.png", { "X-CDS-Request": "" })).status).toBe(403)
+    expect((await upload(TINY_PNG, "skema.png", { "X-Just-Circuit-Request": "" })).status).toBe(403)
     const bad = await upload(Buffer.from("<svg onload=alert(1)>"), "x.svg")
     expect(bad.status).toBe(400)
 

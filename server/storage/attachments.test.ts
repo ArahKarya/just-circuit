@@ -15,14 +15,14 @@ let store: AttachmentStore
 let projectId: string
 
 beforeEach(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "cds-attach-"))
+  dataDir = await mkdtemp(path.join(tmpdir(), "just-circuit-attach-"))
   projects = createProjectStore(dataDir)
   store = createAttachmentStore(projects)
   projectId = (await projects.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "1" } })).id
 })
 afterEach(() => rm(dataDir, { recursive: true, force: true }))
 
-const attachmentsDir = async () => path.join(await projects.pathOf(projectId), ".cds", "attachments")
+const attachmentsDir = async () => path.join(await projects.pathOf(projectId), ".just-circuit", "attachments")
 
 describe("attachment rules", () => {
   it("knows which files can be sent", () => {
@@ -136,11 +136,11 @@ describe("attachment store", () => {
     await expect(store.add(projectId, "a.png", TINY_PNG)).rejects.toThrow(/bukan folder/)
   })
 
-  it("refuses a .cds folder that is a symlink to somewhere else", async () => {
+  it("refuses a .just-circuit folder that is a symlink to somewhere else", async () => {
     const projectDir = await projects.pathOf(projectId)
     const elsewhere = path.join(dataDir, "elsewhere")
-    await rename(path.join(projectDir, ".cds"), elsewhere)
-    await symlink(elsewhere, path.join(projectDir, ".cds"))
+    await rename(path.join(projectDir, ".just-circuit"), elsewhere)
+    await symlink(elsewhere, path.join(projectDir, ".just-circuit"))
     await expect(store.add(projectId, "a.png", TINY_PNG)).rejects.toThrow()
     await expect(store.clear(projectId)).rejects.toThrow()
     await expect(readdir(path.join(elsewhere, "attachments"))).rejects.toThrow()

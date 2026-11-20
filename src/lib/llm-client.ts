@@ -47,7 +47,7 @@ export interface ChatResult {
   changedFiles: string[]
 }
 
-const JSON_HEADERS = { "Content-Type": "application/json", "X-CDS-Request": "1" }
+const JSON_HEADERS = { "Content-Type": "application/json", "X-Just-Circuit-Request": "1" }
 
 /** apiKey is only sent when typed in the (unsaved) form; otherwise the server uses the stored key. */
 function toServerConnection(connection: Connection) {
@@ -73,7 +73,7 @@ function parseLine(line: string): StreamEvent | null {
   }
 }
 
-/** Streams a chat completion through the CDS server. Rejects if the stream ends early. */
+/** Streams a chat completion through the Just Circuit server. Rejects if the stream ends early. */
 export async function streamChat(request: ChatRequest): Promise<ChatResult> {
   const response = await fetch("/api/llm/chat", {
     method: "POST",

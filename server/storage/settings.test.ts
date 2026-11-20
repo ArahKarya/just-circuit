@@ -8,7 +8,7 @@ import { createSettingsStore, type SettingsInput } from "./settings"
 
 let dataDir: string
 beforeEach(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "cds-settings-"))
+  dataDir = await mkdtemp(path.join(tmpdir(), "just-circuit-settings-"))
 })
 afterEach(() => rm(dataDir, { recursive: true, force: true }))
 

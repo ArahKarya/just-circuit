@@ -3,9 +3,10 @@ import { useLiveData } from "../lib/live-data"
 import { resolveTheme, withDefaults } from "../lib/preferences"
 import { preferencesRepo, TOPICS } from "../lib/repo"
 import type { Preferences } from "../lib/types"
+import { STORAGE_KEYS } from "../lib/storage-keys"
 
 const DARK_QUERY = "(prefers-color-scheme: dark)"
-const THEME_CACHE_KEY = "cds.theme"
+const THEME_CACHE_KEY = STORAGE_KEYS.theme
 
 function prefersDark(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(DARK_QUERY).matches

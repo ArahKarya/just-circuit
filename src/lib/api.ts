@@ -1,4 +1,4 @@
-/** Thin client for the CDS server. Every call carries the CSRF header the server requires. */
+/** Thin client for the Just Circuit server. Every call carries the CSRF header the server requires. */
 
 export class ApiError extends Error {
   constructor(
@@ -9,7 +9,7 @@ export class ApiError extends Error {
   }
 }
 
-export const UNAUTHORIZED_EVENT = "cds:unauthorized"
+export const UNAUTHORIZED_EVENT = "just-circuit:unauthorized"
 
 interface Envelope<T> {
   success: boolean
@@ -22,7 +22,7 @@ export async function apiRequest<T>(method: string, url: string, body?: unknown,
     method,
     signal,
     credentials: "same-origin",
-    headers: { "X-CDS-Request": "1", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    headers: { "X-Just-Circuit-Request": "1", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   let envelope: Envelope<T> | null = null

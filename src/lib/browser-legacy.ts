@@ -1,3 +1,4 @@
+import { STORAGE_KEYS } from "./storage-keys"
 import Dexie, { type EntityTable } from "dexie"
 import { api } from "./api"
 import type { AiSettings, ChatMessage, Project } from "./types"
@@ -7,8 +8,8 @@ import type { AiSettings, ChatMessage, Project } from "./types"
  * to move that data to the server once; the IndexedDB copy is left untouched as a backup.
  */
 const LEGACY_DB_NAME = "circuit-design-studio"
-const MIGRATED_KEY = "cds.migratedToServer"
-const ACTIVE_KEY = "cds.activeProjectId"
+const MIGRATED_KEY = STORAGE_KEYS.migratedToServer
+const ACTIVE_KEY = STORAGE_KEYS.activeProject
 
 interface SettingRow {
   key: string

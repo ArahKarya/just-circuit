@@ -10,7 +10,7 @@ let dataDir: string
 let store: ProjectStore
 
 beforeEach(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "cds-history-"))
+  dataDir = await mkdtemp(path.join(tmpdir(), "just-circuit-history-"))
   store = createProjectStore(dataDir)
 })
 afterEach(() => rm(dataDir, { recursive: true, force: true }))
@@ -19,7 +19,7 @@ describe("version history", () => {
   it("records AI changes separately from hand edits and restores old versions", async () => {
     const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "v1" } })
     const dir = path.join(dataDir, "workspaces", "default", id)
-    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toContain(".cds/")
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toContain(".just-circuit/")
 
     // A hand edit (e.g. from the terminal), then an AI change.
     await writeFile(path.join(dir, ENTRY), "v2-manual")
@@ -69,7 +69,7 @@ describe("version history", () => {
     const { id } = await store.create({ name: "A", entrypoint: ENTRY, files: { [ENTRY]: "v1" } })
     await store.changeMessages(id, () => [{ id: "m", projectId: id, role: "user", content: "rahasia", createdAt: 1 }])
     await store.update(id, { files: { [ENTRY]: "v2" }, commitMessage: "AI" })
-    expect((await store.versions(id)).flatMap((v) => v.files)).not.toContain(".cds/chat.json")
+    expect((await store.versions(id)).flatMap((v) => v.files)).not.toContain(".just-circuit/chat.json")
     await expect(store.diffOf(id, "deadbeef")).rejects.toBeInstanceOf(NotFoundError)
     await expect(store.diffOf(id, "--output=/tmp/x")).rejects.toBeInstanceOf(NotFoundError)
   })

@@ -43,7 +43,7 @@ function nameFrom(fileName: string, root: string, packageName: string | undefine
   return (packageName || root || fromFile || "Proyek impor").slice(0, 100)
 }
 
-/** Reads a tsci project (or a CDS download) from a ZIP file. */
+/** Reads a tsci project (or a Just Circuit download) from a ZIP file. */
 export async function readProjectZip(data: ArrayBuffer | Uint8Array, fileName: string): Promise<ImportedProject> {
   let zip: JSZip
   try {

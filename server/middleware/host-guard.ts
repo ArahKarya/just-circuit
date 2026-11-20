@@ -5,7 +5,7 @@ const LOOPBACK_NAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
 const FORWARDED_HEADERS = ["x-forwarded-for", "forwarded", "cf-connecting-ip", "x-real-ip"]
 
 export interface HostGuardOptions {
-  /** Host names allowed besides loopback (from CDS_ALLOWED_HOSTS). */
+  /** Host names allowed besides loopback (from JUST_CIRCUIT_ALLOWED_HOSTS). */
   allowedHosts: readonly string[]
   /** Accept any Host (a password protects the server, and HOST is not loopback). */
   allowAnyHost: boolean
@@ -29,10 +29,10 @@ export function hostName(value: string | undefined): string {
 export function hostProblem(options: HostGuardOptions, headers: IncomingHttpHeaders): { status: number; error: string } | null {
   const allowed = new Set([...LOOPBACK_NAMES, ...options.allowedHosts.map(hostName)])
   if (options.loginDisabled && FORWARDED_HEADERS.some((header) => headers[header] !== undefined)) {
-    return { status: 403, error: "Akses lewat proxy butuh login. Set CDS_PASSWORD_HASH (pnpm set-password)." }
+    return { status: 403, error: "Akses lewat proxy butuh login. Set JUST_CIRCUIT_PASSWORD_HASH (pnpm set-password)." }
   }
   if (!options.allowAnyHost && !allowed.has(hostName(headers.host))) {
-    return { status: 421, error: "Host tidak dikenal. Tambahkan ke CDS_ALLOWED_HOSTS." }
+    return { status: 421, error: "Host tidak dikenal. Tambahkan ke JUST_CIRCUIT_ALLOWED_HOSTS." }
   }
   return null
 }
