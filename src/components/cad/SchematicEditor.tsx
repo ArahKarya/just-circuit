@@ -22,8 +22,11 @@ import {
   listComponents,
   patchComponentProps,
   roundMm,
+  jsxStringValue,
   type PropPatchValue,
 } from "../../lib/tsx-ast"
+import { classifyCadShortcut } from "../../lib/cad-shortcuts"
+import { reportPatchFailure } from "./patch-feedback"
 import type { Project, ProjectFiles } from "../../lib/types"
 import { Button, IconButton } from "../ui"
 import { PropertyInspector } from "./PropertyInspector"
@@ -132,6 +135,7 @@ export function SchematicEditor({
     (name: string, patch: Record<string, PropPatchValue>) => {
       const res = patchComponentProps(project.files, name, patch)
       if (res.status === "updated") onCommitFiles(res.files)
+      else reportPatchFailure(name, res)
     },
     [project.files, onCommitFiles],
   )
@@ -150,15 +154,15 @@ export function SchematicEditor({
   // KiCad-style keyboard shortcuts
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const tag = (event.target as HTMLElement | null)?.tagName
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      const shortcut = classifyCadShortcut(event)
+      if (shortcut.kind === "ignore") return
+      if (shortcut.kind === "undo" || shortcut.kind === "redo") {
         event.preventDefault()
-        if (event.shiftKey) onRedo()
+        if (shortcut.kind === "redo") onRedo()
         else onUndo()
         return
       }
-      const key = event.key.toLowerCase()
+      const key = shortcut.key
       if (key === "escape") {
         setTool("select")
         setWireStart(null)
@@ -273,7 +277,7 @@ export function SchematicEditor({
     }
     if (tool === "netlabel") {
       const label = netLabelName.trim() || "NET1"
-      const snippet = `<netlabel net=${JSON.stringify(label)} connection=${JSON.stringify(`${pin.componentName}.${pin.pinLabel}`)} schX={${roundMm(pin.x + 0.5)}} schY={${roundMm(pin.y + 0.5)}} />`
+      const snippet = `<netlabel net=${jsxStringValue(label)} connection=${jsxStringValue(`${pin.componentName}.${pin.pinLabel}`)} schX={${roundMm(pin.x + 0.5)}} schY={${roundMm(pin.y + 0.5)}} />`
       const res = insertIntoBoard(project.files, project.entrypoint, snippet)
       if (res.status === "updated") onCommitFiles(res.files)
     }

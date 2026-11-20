@@ -119,7 +119,14 @@ function parseAttrValue(raw: string | null): ParsedAttrValue {
     const inner = raw.slice(1, -1).trim()
     if (inner === "true") return { kind: "boolean", value: true }
     if (inner === "false") return { kind: "boolean", value: false }
-    if ((inner.startsWith('"') && inner.endsWith('"')) || (inner.startsWith("'") && inner.endsWith("'")) || (inner.startsWith("`") && inner.endsWith("`") && !inner.includes("${"))) {
+    if (inner.length >= 2 && inner.startsWith('"') && inner.endsWith('"')) {
+      try {
+        const value: unknown = JSON.parse(inner)
+        if (typeof value === "string") return { kind: "string", value }
+      } catch {
+        // Not a JSON-compatible literal (e.g. `"a" + "b"`): treat it as an expression below.
+      }
+    } else if ((inner.startsWith("'") && inner.endsWith("'") && !inner.includes("\\")) || (inner.startsWith("`") && inner.endsWith("`") && !inner.includes("${") && !inner.includes("\\"))) {
       return { kind: "string", value: inner.slice(1, -1) }
     }
     const numMatch = inner.match(/^(-?\d+(?:\.\d+)?)$/)
@@ -222,21 +229,34 @@ function parseOpeningTag(src: string, pos: number): Omit<JsxElementNode, "end" |
 export function parseJsxElements(source: string): JsxElementNode[] {
   const results: JsxElementNode[] = []
   const stack: JsxElementNode[] = []
+  // Brace depth at which each open element's children start. When the current depth equals
+  // the innermost element's depth we are in JSX text, where quotes and `//` are plain text.
+  const childDepth: number[] = []
+  let braceDepth = 0
   let i = 0
 
   while (i < source.length) {
     const ch = source[i]
-    if (ch === "/" && source[i + 1] === "/") {
+    const inJsxText = stack.length > 0 && braceDepth === childDepth[childDepth.length - 1]
+    if (!inJsxText) {
+      if (ch === "{") braceDepth += 1
+      else if (ch === "}") braceDepth = Math.max(0, braceDepth - 1)
+    } else if (ch === "{") {
+      braceDepth += 1
+      i += 1
+      continue
+    }
+    if (!inJsxText && ch === "/" && source[i + 1] === "/") {
       const nl = source.indexOf("\n", i + 2)
       i = nl === -1 ? source.length : nl + 1
       continue
     }
-    if (ch === "/" && source[i + 1] === "*") {
+    if (!inJsxText && ch === "/" && source[i + 1] === "*") {
       const end = source.indexOf("*/", i + 2)
       i = end === -1 ? source.length : end + 2
       continue
     }
-    if (ch === '"' || ch === "'" || ch === "`") {
+    if (!inJsxText && (ch === '"' || ch === "'" || ch === "`")) {
       i = skipString(source, i)
       continue
     }
@@ -253,6 +273,7 @@ export function parseJsxElements(source: string): JsxElementNode[] {
         for (let s = stack.length - 1; s >= 0; s -= 1) {
           if (stack[s].tagName === closeName) {
             const open = stack.splice(s, 1)[0]
+            childDepth.splice(s, 1)
             open.closeStart = i
             open.closeEnd = closeEnd
             open.end = closeEnd
@@ -263,7 +284,7 @@ export function parseJsxElements(source: string): JsxElementNode[] {
         continue
       }
     }
-    if (ch === "<" && looksLikeJsxTag(source, i)) {
+    if (ch === "<" && (inJsxText ? isIdentStart(source[i + 1] ?? "") : looksLikeJsxTag(source, i))) {
       const open = parseOpeningTag(source, i)
       if (open) {
         const node: JsxElementNode = {
@@ -273,7 +294,10 @@ export function parseJsxElements(source: string): JsxElementNode[] {
           closeEnd: null,
         }
         results.push(node)
-        if (!open.selfClosing) stack.push(node)
+        if (!open.selfClosing) {
+          stack.push(node)
+          childDepth.push(braceDepth)
+        }
         i = open.openEnd
         continue
       }
@@ -313,7 +337,16 @@ export function roundMm(value: number): number {
 function formatPropValue(name: string, value: string | number | boolean): string {
   if (typeof value === "number") return `${name}={${roundMm(value)}}`
   if (typeof value === "boolean") return value ? name : `${name}={false}`
-  return `${name}=${JSON.stringify(value)}`
+  return `${name}=${jsxStringValue(value)}`
+}
+
+/**
+ * Formats a string as a JSX attribute value. JSX string attributes have no escape sequences,
+ * so values containing quotes, backslashes or line breaks are written as a JS string
+ * expression instead (`{"a\"b"}`), which can never close the attribute early.
+ */
+export function jsxStringValue(value: string): string {
+  return /["\\\r\n\u2028\u2029]/.test(value) ? `{${JSON.stringify(value)}}` : `"${value}"`
 }
 
 export interface ComponentSummary {
@@ -534,7 +567,25 @@ function removeElementSpan(source: string, element: JsxElementNode): string {
   return `${source.slice(0, start)}${source.slice(end)}`
 }
 
-/** Deletes a named component and optionally any `<trace>` referencing it. */
+/** Elements that reference a component pin, and the attributes holding the reference. */
+const CONNECTION_ATTRS: Readonly<Record<string, readonly string[]>> = {
+  trace: ["from", "to"],
+  netlabel: ["connection", "connectsTo"],
+}
+
+/**
+ * Returns the component a port selector points at: `.R1 > .pin1`, `R1.pin1` and `.R1 .pin1`
+ * all give `R1`. Net selectors (`net.GND`) give null.
+ */
+export function selectorComponent(selector: string | undefined): string | null {
+  if (!selector) return null
+  const trimmed = selector.trim().replace(/^\./, "")
+  const component = trimmed.split(/[\s>.]/, 1)[0]
+  if (!component || component === "net") return null
+  return component
+}
+
+/** Deletes a named component and optionally the traces and net labels attached to its pins. */
 export function deleteComponent(files: ProjectFiles, name: string, options?: { removeConnectedTraces?: boolean }): PatchResult {
   const found = inspectComponent(files, name)
   if (!found) return { status: "not-found" }
@@ -543,19 +594,16 @@ export function deleteComponent(files: ProjectFiles, name: string, options?: { r
   nextFiles[found.path] = removeElementSpan(nextFiles[found.path], found.element)
 
   if (options?.removeConnectedTraces) {
-    const refPattern = new RegExp(`\\.${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\b|\\s|>|$)`)
     for (const [path, source] of Object.entries(nextFiles)) {
       if (!/\.(tsx|jsx)$/.test(path)) continue
-      const traces = parseJsxElements(source).filter((el) => {
-        if (el.tagName !== "trace") return false
-        const from = getStringAttr(el, "from") ?? ""
-        const to = getStringAttr(el, "to") ?? ""
-        return refPattern.test(from) || refPattern.test(to)
+      const connected = parseJsxElements(source).filter((el) => {
+        const attrs = CONNECTION_ATTRS[el.tagName]
+        return attrs !== undefined && attrs.some((attr) => selectorComponent(getStringAttr(el, attr)) === name)
       })
-      if (traces.length === 0) continue
+      if (connected.length === 0) continue
       let updated = source
-      for (const trace of traces.sort((a, b) => b.start - a.start)) {
-        updated = removeElementSpan(updated, trace)
+      for (const el of connected.sort((a, b) => b.start - a.start)) {
+        updated = removeElementSpan(updated, el)
       }
       nextFiles[path] = updated
     }
@@ -572,7 +620,7 @@ export function addTrace(
   to: string,
   extraProps?: Record<string, PropPatchValue>,
 ): PatchResult {
-  const attrs = [`from=${JSON.stringify(from)}`, `to=${JSON.stringify(to)}`]
+  const attrs = [`from=${jsxStringValue(from)}`, `to=${jsxStringValue(to)}`]
   if (extraProps) {
     for (const [key, val] of Object.entries(extraProps)) {
       if (val !== undefined && val !== null) attrs.push(formatPropValue(key, val))
@@ -598,7 +646,7 @@ export function addPcbTrace(
     return `{ route_type: "wire", x: ${roundMm(pt.x)}, y: ${roundMm(pt.y)}, width: ${roundMm(pt.width ?? defaultWidth)}, layer: ${JSON.stringify(pt.layer ?? defaultLayer)} }`
   })
   const attrs = [`route={[${points.join(", ")}]}`]
-  if (options?.net) attrs.push(`net=${JSON.stringify(options.net)}`)
+  if (options?.net) attrs.push(`net=${jsxStringValue(options.net)}`)
   return insertIntoBoard(files, entrypoint, `<pcbtrace ${attrs.join(" ")} />`)
 }
 
@@ -613,11 +661,11 @@ export function addVia(
   const attrs = [
     `pcbX={${roundMm(x)}}`,
     `pcbY={${roundMm(y)}}`,
-    `fromLayer=${JSON.stringify(options?.fromLayer ?? "top")}`,
-    `toLayer=${JSON.stringify(options?.toLayer ?? "bottom")}`,
+    `fromLayer=${jsxStringValue(options?.fromLayer ?? "top")}`,
+    `toLayer=${jsxStringValue(options?.toLayer ?? "bottom")}`,
   ]
-  if (options?.holeDiameter) attrs.push(`holeDiameter=${JSON.stringify(options.holeDiameter)}`)
-  if (options?.outerDiameter) attrs.push(`outerDiameter=${JSON.stringify(options.outerDiameter)}`)
-  if (options?.net) attrs.push(`net=${JSON.stringify(options.net)}`)
+  if (options?.holeDiameter) attrs.push(`holeDiameter=${jsxStringValue(options.holeDiameter)}`)
+  if (options?.outerDiameter) attrs.push(`outerDiameter=${jsxStringValue(options.outerDiameter)}`)
+  if (options?.net) attrs.push(`net=${jsxStringValue(options.net)}`)
   return insertIntoBoard(files, entrypoint, `<via ${attrs.join(" ")} />`)
 }

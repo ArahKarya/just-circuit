@@ -11,6 +11,8 @@ import {
   parseJsxElements,
   patchBoardProps,
   patchComponentProps,
+  jsxStringValue,
+  selectorComponent,
 } from "./tsx-ast"
 
 const SAMPLE = `import React from "react"
@@ -137,5 +139,69 @@ describe("board & element mutations", () => {
     expect(res.files["index.circuit.tsx"]).not.toContain('name="R1"')
     expect(res.files["index.circuit.tsx"]).not.toContain('from=".R1 > .pin2"')
     expect(res.files["index.circuit.tsx"]).toContain('name="D1"')
+  })
+})
+
+describe("hardening", () => {
+  it("treats quotes and slashes in JSX text as text, not string starts", () => {
+    const src = `export default () => (
+  <board width="10mm" height="10mm">
+    <silkscreentext text="x" />
+    don't use // this "part"
+    <resistor name="R1" resistance="1k" footprint="0402" />
+    {items.map((it) => <resistor name="R2" resistance={'1k'} footprint="0402" />)}
+  </board>
+)`
+    expect(listComponents({ "index.circuit.tsx": src }).map((c) => c.name)).toEqual(["R1", "R2"])
+    expect(findBoardElement({ "index.circuit.tsx": src }, "index.circuit.tsx")?.closeStart).not.toBeNull()
+  })
+
+  it("writes values with quotes, backslashes or newlines as JS string expressions", () => {
+    expect(jsxStringValue("10k")).toBe('"10k"')
+    expect(jsxStringValue('a"b')).toBe('{"a\\"b"}')
+    expect(jsxStringValue("a\\b")).toBe('{"a\\\\b"}')
+    expect(jsxStringValue("a\nb")).toBe('{"a\\nb"}')
+  })
+
+  it("cannot be broken out of with a crafted value, and reads the value back intact", () => {
+    const files = { "index.circuit.tsx": `export default () => (<board><resistor name="R1" resistance="1k" /></board>)` }
+    const evil = '1k" onClick={alert(1)} x="'
+    const res = patchComponentProps(files, "R1", { resistance: evil })
+    expect(res.status).toBe("updated")
+    if (res.status !== "updated") return
+    const [el] = parseJsxElements(res.files["index.circuit.tsx"]).filter((e) => e.tagName === "resistor")
+    expect(el.attributes.map((a) => a.name)).toEqual(["name", "resistance"])
+    expect(inspectComponent(res.files, "R1")?.element.attributes[1].parsed).toEqual({ kind: "string", value: evil })
+    const again = patchComponentProps(res.files, "R1", { resistance: "2k" })
+    expect(again.status).toBe("updated")
+  })
+
+  it("removes only the deleted part's traces and net labels", () => {
+    const src = `export default () => (
+  <board>
+    <resistor name="R1" resistance="1k" />
+    <resistor name="R1-2" resistance="1k" />
+    <trace from=".R1 > .pin1" to="net.GND" />
+    <trace from="R1.pin2" to="R1-2.pin1" />
+    <trace from=".R1-2 > .pin2" to="net.VCC" />
+    <netlabel net="VCC" connection="R1.pin1" />
+  </board>
+)`
+    const res = deleteComponent({ "index.circuit.tsx": src }, "R1", { removeConnectedTraces: true })
+    expect(res.status).toBe("updated")
+    if (res.status !== "updated") return
+    const out = res.files["index.circuit.tsx"]
+    expect(out).not.toContain('".R1 > .pin1"')
+    expect(out).not.toContain('"R1.pin2"')
+    expect(out).not.toContain("<netlabel")
+    expect(out).toContain('from=".R1-2 > .pin2"')
+    expect(out).toContain('name="R1-2"')
+  })
+
+  it("finds the component a selector points at", () => {
+    expect(selectorComponent(".U1 > .pin3")).toBe("U1")
+    expect(selectorComponent("U1.pin3")).toBe("U1")
+    expect(selectorComponent("net.GND")).toBeNull()
+    expect(selectorComponent(undefined)).toBeNull()
   })
 })
