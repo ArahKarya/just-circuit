@@ -30,6 +30,8 @@ import {
   type PcbRoutePoint,
   type PropPatchValue,
 } from "../../lib/tsx-ast"
+import { classifyCadShortcut } from "../../lib/cad-shortcuts"
+import { reportPatchFailure } from "./patch-feedback"
 import type { Project, ProjectFiles } from "../../lib/types"
 import { Button, IconButton } from "../ui"
 import { PropertyInspector } from "./PropertyInspector"
@@ -156,6 +158,7 @@ export function PcbCadEditor({
     (name: string, patch: Record<string, PropPatchValue>) => {
       const res = patchComponentProps(project.files, name, patch)
       if (res.status === "updated") onCommitFiles(res.files)
+      else reportPatchFailure(name, res)
     },
     [project.files, onCommitFiles],
   )
@@ -188,15 +191,15 @@ export function PcbCadEditor({
   // KiCad-style PCB shortcuts
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const tag = (event.target as HTMLElement | null)?.tagName
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      const shortcut = classifyCadShortcut(event)
+      if (shortcut.kind === "ignore") return
+      if (shortcut.kind === "undo" || shortcut.kind === "redo") {
         event.preventDefault()
-        if (event.shiftKey) onRedo()
+        if (shortcut.kind === "redo") onRedo()
         else onUndo()
         return
       }
-      const key = event.key.toLowerCase()
+      const key = shortcut.key
       if (key === "escape") {
         if (routePts.length > 0) setRoutePts([])
         else if (measureStart) setMeasureStart(null)

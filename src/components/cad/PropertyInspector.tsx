@@ -42,18 +42,26 @@ export function PropertyInspector({
   const [posY, setPosY] = useState("")
   const [rotation, setRotation] = useState("")
 
+  const formX = component ? (mode === "schematic" ? component.schX : component.pcbX) : undefined
+  const formY = component ? (mode === "schematic" ? component.schY : component.pcbY) : undefined
+  const formRot = component ? (mode === "schematic" ? component.schRotation : component.pcbRotation) : undefined
+  // Reset the form only when this component's own values change, not on every unrelated file edit,
+  // so typing in the inspector survives a rebuild or an AI edit elsewhere.
+  const formKey = component
+    ? [component.name, mode, component.value, component.footprint, component.manufacturerPartNumber, formX, formY, formRot].join("|")
+    : ""
+
   useEffect(() => {
     if (!component) return
     setValue(component.value ?? "")
     setFootprint(component.footprint ?? "")
     setMpn(component.manufacturerPartNumber ?? "")
-    const x = mode === "schematic" ? component.schX : component.pcbX
-    const y = mode === "schematic" ? component.schY : component.pcbY
-    const rot = mode === "schematic" ? component.schRotation : component.pcbRotation
-    setPosX(x !== undefined ? String(x) : "")
-    setPosY(y !== undefined ? String(y) : "")
-    setRotation(rot !== undefined ? String(rot) : "0")
-  }, [component, mode])
+    setPosX(formX !== undefined ? String(formX) : "")
+    setPosY(formY !== undefined ? String(formY) : "")
+    setRotation(formRot !== undefined ? String(formRot) : "0")
+    // formKey captures every value read here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formKey])
 
   if (!component) {
     return (
@@ -82,12 +90,18 @@ export function PropertyInspector({
     if (mpn.trim() !== (component.manufacturerPartNumber ?? "")) {
       patch.manufacturerPartNumber = mpn.trim() || undefined
     }
-    const nx = Number.parseFloat(posX)
-    if (posX.trim() !== "" && Number.isFinite(nx)) patch[xProp] = nx
-    const ny = Number.parseFloat(posY)
-    if (posY.trim() !== "" && Number.isFinite(ny)) patch[yProp] = ny
-    const nr = Number.parseFloat(rotation)
-    if (rotation.trim() !== "" && Number.isFinite(nr)) patch[rotProp] = nr
+    // Only write coordinates the user actually changed, so Apply never adds pcbX/pcbY/rotation noise.
+    const changedNumber = (text: string, current: number | undefined, fallback?: number) => {
+      const n = Number.parseFloat(text)
+      if (text.trim() === "" || !Number.isFinite(n)) return undefined
+      return n === (current ?? fallback) ? undefined : n
+    }
+    const nx = changedNumber(posX, formX)
+    if (nx !== undefined) patch[xProp] = nx
+    const ny = changedNumber(posY, formY)
+    if (ny !== undefined) patch[yProp] = ny
+    const nr = changedNumber(rotation, formRot, 0)
+    if (nr !== undefined) patch[rotProp] = nr
     if (Object.keys(patch).length > 0) onPatch(component.name, patch)
   }
 
