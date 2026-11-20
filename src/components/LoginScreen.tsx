@@ -30,7 +30,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       <form onSubmit={(e) => void submit(e)} className="w-full max-w-sm space-y-4 rounded-lg border border-line bg-panel p-6">
         <div className="flex items-center gap-2">
           <CircuitBoard size={22} className="text-accent" />
-          <h1 className="text-base font-semibold">Circuit Design Studio</h1>
+          <h1 className="text-base font-semibold">Just Circuit</h1>
         </div>
         <Field label="Password" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <p role="alert" className="text-xs text-danger">{error}</p>}

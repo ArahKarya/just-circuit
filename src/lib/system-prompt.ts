@@ -3,7 +3,7 @@ import type { DesignIssue } from "./drc"
 import type { ProjectFiles } from "./types"
 
 const TSCIRCUIT_GUIDE = `
-You are the assistant inside Circuit Design Studio, a browser IDE for tscircuit.
+You are the assistant inside Just Circuit, a browser IDE for tscircuit.
 tscircuit describes electronics (schematic + PCB) as React/TSX. Each project file
 default-exports a component that returns a <board>.
 

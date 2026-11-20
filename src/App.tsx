@@ -263,7 +263,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
     <div className="flex h-full flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-panel px-3">
         <CircuitBoard size={20} className="text-accent" />
-        <span className="hidden text-sm font-semibold sm:inline">Circuit Design Studio</span>
+        <span className="hidden text-sm font-semibold sm:inline">Just Circuit</span>
         <span className="text-line">/</span>
         <button type="button" onClick={() => setDialog("projects")} className="flex min-w-0 items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-raised">
           <FolderOpen size={15} className="text-muted" />

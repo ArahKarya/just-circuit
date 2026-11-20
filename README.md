@@ -1,4 +1,4 @@
-# Circuit Design Studio (CDS)
+# Just Circuit
 
 Desain PCB dengan kode [tscircuit](https://github.com/tscircuit/tscircuit) langsung di browser, dibantu asisten AI. Semua yang biasanya dilakukan lewat `tsci` CLI (preview skematik/PCB/3D, impor part JLCPCB, ekspor file produksi) ada di satu halaman web.
 
