@@ -39,14 +39,20 @@ export function LayoutEditor({ circuitJson, onMove, onDone }: LayoutEditorProps)
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col bg-black">
-      <div className="flex shrink-0 items-center gap-3 border-b border-line bg-panel px-3 py-2 text-sm text-ink">
-        <Move size={16} className="shrink-0 text-accent" />
-        <span className="min-w-0 flex-1 truncate">
-          Mode atur posisi: seret komponen di PCB.
-          {moveCount > 0 && <span className="ml-2 text-muted">{moveCount} perpindahan tersimpan</span>}
-        </span>
-        <Button variant="primary" onClick={onDone}>
-          <Check size={15} />
+      <div className="flex shrink-0 items-center gap-3 border-b border-accent/30 bg-panel px-4 py-2 text-sm text-ink shadow-md">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
+          <Move size={15} />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <span className="truncate font-medium">Mode atur posisi: seret komponen di PCB.</span>
+          {moveCount > 0 && (
+            <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent tabular-nums">
+              {moveCount} perpindahan tersimpan
+            </span>
+          )}
+        </div>
+        <Button variant="primary" size="sm" onClick={onDone}>
+          <Check size={14} />
           Selesai
         </Button>
       </div>

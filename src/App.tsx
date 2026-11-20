@@ -1,53 +1,88 @@
 import type { ManualEditEvent } from "@tscircuit/core"
 import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@tscircuit/runframe/runner"
-import { BookOpen, CircuitBoard, Code2, ListChecks, FolderOpen, History, LogOut, TerminalSquare, MessageSquare, Move, PackageSearch, Settings } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  AlertTriangle,
+  BookOpen,
+  ChevronDown,
+  CircuitBoard,
+  Code2,
+  FolderOpen,
+  History,
+  ListChecks,
+  LogOut,
+  MessageSquare,
+  Move,
+  PackageSearch,
+  Settings,
+  TerminalSquare,
+} from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
 import toast from "react-hot-toast"
 import { skippedLabel, type BuildScope } from "../shared/build-scope"
-import { BuildScopeControls } from "./components/BuildScopeControls"
 import { partFilePath, type CatalogPart, type KicadModPart } from "../shared/parts"
+import { BuildScopeControls } from "./components/BuildScopeControls"
 import { ChatPanel, type ChatDraftRequest } from "./components/ChatPanel"
-import { PartSearchDialog } from "./components/parts/PartSearchDialog"
+import { CodeEditor } from "./components/CodeEditor"
+import { LayoutEditor } from "./components/LayoutEditor"
+import { LoginScreen } from "./components/LoginScreen"
+import { PreviewPane } from "./components/PreviewPane"
 import { ProblemsPanel } from "./components/ProblemsPanel"
 import { HistoryDialog } from "./components/history/HistoryDialog"
 import { LibraryDialog } from "./components/library/LibraryDialog"
 import { SaveToLibraryDialog } from "./components/library/SaveToLibraryDialog"
-import { TerminalPanel } from "./components/terminal/TerminalPanel"
-import { LoginScreen } from "./components/LoginScreen"
-import { LayoutEditor } from "./components/LayoutEditor"
-import { CodeEditor } from "./components/CodeEditor"
-import { PreviewPane } from "./components/PreviewPane"
+import { PartSearchDialog } from "./components/parts/PartSearchDialog"
 import { ProjectsDialog } from "./components/projects/ProjectsDialog"
 import { SettingsDialog } from "./components/settings/SettingsDialog"
+import { TerminalPanel } from "./components/terminal/TerminalPanel"
 import { Button, IconButton } from "./components/ui"
 import { useAiSettings } from "./hooks/useAiSettings"
 import { useAuth } from "./hooks/useAuth"
-import { usePreferences } from "./hooks/usePreferences"
 import { useBrowserMigration } from "./hooks/useBrowserMigration"
 import { useChat } from "./hooks/useChat"
 import { useFileActions } from "./hooks/useFileActions"
+import { usePreferences } from "./hooks/usePreferences"
 import { useProjects } from "./hooks/useProjects"
 import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
 import { buildIssues, extractIssues, locateComponent, type DesignIssue } from "./lib/drc"
 import { notifyChange } from "./lib/live-data"
-import { pinNamesRequest } from "./lib/parts"
-import { buildFixRequest } from "./lib/system-prompt"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
-import { projectsRepo, TOPICS } from "./lib/repo"
+import { pinNamesRequest } from "./lib/parts"
 import { addComponentFile, addImportedComponent, withFiles } from "./lib/project-ops"
 import { chatConnection, connectionProblem } from "./lib/providers"
+import { projectsRepo, TOPICS } from "./lib/repo"
+import { buildFixRequest } from "./lib/system-prompt"
 import type { AttachmentRef, RunStatus } from "./lib/types"
 
 type LeftTab = "chat" | "code" | "problems"
 type DialogName = "settings" | "projects" | "import" | "parts" | "history" | "library" | null
 
-const STATUS_STYLES: Record<RunStatus["state"], { label: string; className: string }> = {
-  idle: { label: "Siap", className: "text-muted" },
-  running: { label: "Membangun…", className: "text-warn" },
-  ok: { label: "Build OK", className: "text-accent" },
-  error: { label: "Build error", className: "text-danger" },
+const MIN_PANEL_WIDTH = 340
+const DEFAULT_CHAT_WIDTH = 450
+const DEFAULT_CODE_WIDTH = 620
+
+const STATUS_STYLES: Record<RunStatus["state"], { label: string; pill: string; dot: string }> = {
+  idle: {
+    label: "Siap",
+    pill: "border-line bg-surface/70 text-muted hover:text-ink",
+    dot: "bg-muted/70",
+  },
+  running: {
+    label: "Membangun…",
+    pill: "border-warn/35 bg-warn/10 text-warn",
+    dot: "bg-warn animate-pulse",
+  },
+  ok: {
+    label: "Build OK",
+    pill: "border-accent/30 bg-accent/10 text-accent hover:bg-accent/15",
+    dot: "bg-accent",
+  },
+  error: {
+    label: "Build error",
+    pill: "border-danger/40 bg-danger/10 text-danger hover:bg-danger/15",
+    dot: "bg-danger",
+  },
 }
 
 /** Root: login (when the server requires it), then the studio. */
@@ -60,7 +95,13 @@ export function App() {
 }
 
 function CenteredMessage({ children, tone }: { children: ReactNode; tone?: "error" }) {
-  return <div className={`flex h-full items-center justify-center p-4 text-center text-sm ${tone === "error" ? "text-danger" : "text-muted"}`}>{children}</div>
+  return (
+    <div className="flex h-full items-center justify-center bg-surface p-6 text-center">
+      <div className={`max-w-md rounded-xl border px-5 py-4 text-sm ${tone === "error" ? "border-danger/35 bg-danger/10 text-danger" : "border-line bg-panel text-muted"}`}>
+        {children}
+      </div>
+    </div>
+  )
 }
 
 function Studio({ onLogout }: { onLogout?: () => void }) {
@@ -70,6 +111,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const ai = useAiSettings()
   const { preferences, theme } = usePreferences()
   const [leftTab, setLeftTab] = useState<LeftTab>("chat")
+  const [customWidth, setCustomWidth] = useState<number | null>(null)
+  const [isResizing, setIsResizing] = useState(false)
   const [dialog, setDialog] = useState<DialogName>(null)
   const [activeFile, setActiveFile] = useState<string | null>(null)
   const [runStatus, setRunStatus] = useState<RunStatus>({ state: "idle", errors: [], warnings: [], revision: "" })
@@ -83,6 +126,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const clearTerminalCommand = useCallback(() => setTerminalCommand(null), [])
   /** File or folder being saved to the library. */
   const [libraryPath, setLibraryPath] = useState<string | null>(null)
+  const leftPaneRef = useRef<HTMLElement>(null)
 
   // Ctrl+` (like VS Code) opens and closes the terminal.
   useEffect(() => {
@@ -95,6 +139,25 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [])
+
+  const startResize = useCallback((event: ReactPointerEvent) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = leftPaneRef.current?.getBoundingClientRect().width ?? (leftTab === "code" ? DEFAULT_CODE_WIDTH : DEFAULT_CHAT_WIDTH)
+    setIsResizing(true)
+    const move = (e: PointerEvent) => {
+      const max = Math.max(MIN_PANEL_WIDTH + 100, window.innerWidth * 0.72)
+      setCustomWidth(Math.round(Math.max(MIN_PANEL_WIDTH, Math.min(max, startWidth + (e.clientX - startX)))))
+    }
+    const up = () => {
+      setIsResizing(false)
+      window.removeEventListener("pointermove", move)
+      window.removeEventListener("pointerup", up)
+    }
+    window.addEventListener("pointermove", move)
+    window.addEventListener("pointerup", up)
+  }, [leftTab])
+
   /** Circuit shown in the layout editor, fixed while it is open. */
   const layoutCircuit = useRef<unknown[]>([])
   const project = working.project
@@ -252,6 +315,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const skipped = skippedLabel(scope)
   const statusLabel = runStatus.state === "ok" && skipped ? `${status.label} (${skipped})` : status.label
   const files = useMemo(() => project?.files ?? {}, [project?.files])
+  const panelWidth = customWidth ?? (leftTab === "code" ? DEFAULT_CODE_WIDTH : DEFAULT_CHAT_WIDTH)
 
   if (!project) {
     const error = migration.error ?? projects.error?.message
@@ -260,61 +324,148 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-surface">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-panel px-3">
-        <CircuitBoard size={20} className="text-accent" />
-        <span className="hidden text-sm font-semibold sm:inline">Just Circuit</span>
-        <span className="text-line">/</span>
-        <button type="button" onClick={() => setDialog("projects")} className="flex min-w-0 items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-raised">
-          <FolderOpen size={15} className="text-muted" />
-          <span className="truncate">{project.name}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setLeftTab("problems")}
-          className={`ml-2 rounded px-1 text-xs hover:underline ${status.className}`}
-          title={runStatus.errors.join("\n") || "Lihat masalah DRC/ERC"}
-        >
-          {statusLabel}
-        </button>
-        <BuildScopeControls scope={scope} isRunning={runStatus.state === "running"} onToggle={toggleScope} />
-        {runStatus.warnings.length > 0 && (
-          <span className="ml-2 cursor-help text-xs text-warn" title={runStatus.warnings.join("\n\n")}>
-            {runStatus.warnings.length} peringatan
-          </span>
-        )}
+        {/* Brand & Project switcher */}
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="flex size-7 items-center justify-center rounded-lg border border-accent/25 bg-accent/12 text-accent">
+              <CircuitBoard size={16} />
+            </span>
+            <span className="hidden text-sm font-semibold tracking-tight text-ink sm:inline">Just Circuit</span>
+          </div>
+          <span className="text-line">/</span>
+          <button
+            type="button"
+            onClick={() => setDialog("projects")}
+            className="flex min-w-0 max-w-[14rem] items-center gap-1.5 rounded-lg border border-transparent bg-surface/60 px-2.5 py-1 text-sm font-medium text-ink transition hover:border-line hover:bg-raised"
+          >
+            <FolderOpen size={14} className="shrink-0 text-muted" />
+            <span className="truncate">{project.name}</span>
+            <ChevronDown size={13} className="shrink-0 text-muted" />
+          </button>
+        </div>
+
+        <span className="hidden h-5 w-px bg-line md:inline-block" aria-hidden="true" />
+
+        {/* Build status & scope */}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setLeftTab("problems")}
+            className={`inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition ${status.pill}`}
+            title={runStatus.errors.join("\n") || "Lihat masalah DRC/ERC"}
+          >
+            <span className={`size-1.5 shrink-0 rounded-full ${status.dot}`} />
+            <span className="whitespace-nowrap">{statusLabel}</span>
+          </button>
+          <BuildScopeControls scope={scope} isRunning={runStatus.state === "running"} onToggle={toggleScope} />
+          {runStatus.warnings.length > 0 && (
+            <span
+              className="inline-flex h-7 cursor-help items-center gap-1 rounded-lg border border-warn/30 bg-warn/10 px-2 text-xs font-medium text-warn tabular-nums"
+              title={runStatus.warnings.join("\n\n")}
+            >
+              <AlertTriangle size={12} />
+              {runStatus.warnings.length} peringatan
+            </span>
+          )}
+        </div>
+
+        {/* Right toolbar */}
         <div className="ml-auto flex items-center gap-1">
-          <Button aria-label="Atur posisi" onClick={openLayoutEditor} disabled={!canEditLayout || isLayoutMode} title={canEditLayout ? "Seret komponen di PCB" : "Butuh build yang berhasil"}>
-            <Move size={15} /><span className="hidden xl:inline">Atur posisi</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Atur posisi"
+            onClick={openLayoutEditor}
+            disabled={!canEditLayout || isLayoutMode}
+            title={canEditLayout ? "Seret komponen di PCB" : "Butuh build yang berhasil"}
+          >
+            <Move size={14} />
+            <span className="hidden xl:inline">Atur posisi</span>
           </Button>
-          <Button aria-label="Terminal" onClick={() => setShowTerminal((open) => !open)} aria-pressed={showTerminal} title="Terminal (Ctrl+`)"><TerminalSquare size={15} /><span className="hidden xl:inline">Terminal</span></Button>
-          <Button aria-label="Riwayat" onClick={() => setDialog("history")}><History size={15} /><span className="hidden xl:inline">Riwayat</span></Button>
-          <Button aria-label="Library" onClick={() => setDialog("library")}><BookOpen size={15} /><span className="hidden xl:inline">Library</span></Button>
-          <Button aria-label="Cari part" onClick={() => setDialog("parts")}><PackageSearch size={15} /><span className="hidden xl:inline">Cari part</span></Button>
-          <IconButton label="Pengaturan" onClick={() => setDialog("settings")}><Settings size={17} /></IconButton>
-          {onLogout && <IconButton label="Keluar" onClick={onLogout}><LogOut size={16} /></IconButton>}
+          <Button
+            size="sm"
+            variant={showTerminal ? "primary" : "ghost"}
+            aria-label="Terminal"
+            onClick={() => setShowTerminal((open) => !open)}
+            aria-pressed={showTerminal}
+            title="Terminal (Ctrl+`)"
+          >
+            <TerminalSquare size={14} />
+            <span className="hidden xl:inline">Terminal</span>
+          </Button>
+
+          <span className="mx-0.5 hidden h-5 w-px bg-line sm:inline-block" aria-hidden="true" />
+
+          <Button size="sm" variant="subtle" aria-label="Riwayat" onClick={() => setDialog("history")}>
+            <History size={14} />
+            <span className="hidden xl:inline">Riwayat</span>
+          </Button>
+          <Button size="sm" variant="subtle" aria-label="Library" onClick={() => setDialog("library")}>
+            <BookOpen size={14} />
+            <span className="hidden xl:inline">Library</span>
+          </Button>
+          <Button size="sm" variant="ghost" aria-label="Cari part" onClick={() => setDialog("parts")}>
+            <PackageSearch size={14} className="text-accent" />
+            <span className="hidden xl:inline">Cari part</span>
+          </Button>
+
+          <span className="mx-0.5 h-5 w-px bg-line" aria-hidden="true" />
+
+          <IconButton label="Pengaturan" onClick={() => setDialog("settings")}>
+            <Settings size={16} />
+          </IconButton>
+          {onLogout && (
+            <IconButton label="Keluar" onClick={onLogout}>
+              <LogOut size={15} />
+            </IconButton>
+          )}
         </div>
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <section className={`flex h-[50%] min-h-0 flex-col border-line bg-panel lg:h-auto lg:shrink-0 lg:border-r ${leftTab === "code" ? "lg:w-[600px]" : "lg:w-[440px]"}`}>
-          <div className="flex shrink-0 gap-1 border-b border-line p-1.5" role="tablist">
-            {([["chat", "Chat AI", MessageSquare], ["code", "Kode", Code2], ["problems", "Masalah", ListChecks]] as const).map(([id, label, Icon]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={leftTab === id}
-                onClick={() => setLeftTab(id)}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-sm ${leftTab === id ? "bg-raised text-ink" : "text-muted hover:text-ink"}`}
-              >
-                <Icon size={15} />
-                {label}
-                {id === "problems" && issues.length > 0 && (
-                  <span className={`rounded-full px-1.5 text-[11px] ${errorCount > 0 ? "bg-danger/15 text-danger" : "bg-raised text-warn"}`}>{issues.length}</span>
-                )}
-              </button>
-            ))}
+        <section
+          ref={leftPaneRef}
+          style={{ ["--panel-w" as string]: `${panelWidth}px` }}
+          className="flex h-[50%] min-h-0 flex-col border-b border-line bg-panel lg:h-auto lg:w-[var(--panel-w)] lg:shrink-0 lg:border-b-0 lg:border-r"
+        >
+          <div className="shrink-0 border-b border-line bg-surface/40 p-1.5">
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-surface p-0.5 border border-line/70" role="tablist">
+              {([
+                ["chat", "Chat AI", MessageSquare],
+                ["code", "Kode", Code2],
+                ["problems", "Masalah", ListChecks],
+              ] as const).map(([id, label, Icon]) => {
+                const active = leftTab === id
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setLeftTab(id)}
+                    className={`flex items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition ${
+                      active
+                        ? "bg-raised text-ink shadow-sm"
+                        : "text-muted hover:text-ink"
+                    }`}
+                  >
+                    <Icon size={14} className={active ? "text-accent" : ""} />
+                    {label}
+                    {id === "problems" && issues.length > 0 && (
+                      <span
+                        className={`rounded-full px-1.5 py-0.2 text-[10px] font-semibold tabular-nums ${
+                          errorCount > 0 ? "bg-danger/15 text-danger" : "bg-warn/15 text-warn"
+                        }`}
+                      >
+                        {issues.length}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           <div className="min-h-0 flex-1">
             {leftTab === "chat" ? (
@@ -327,7 +478,11 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
                 connectionProblem={problem}
                 onOpenSettings={() => setDialog("settings")}
                 agentMode={ai.settings.agentMode ?? false}
-                onToggleAgent={() => void ai.save({ ...ai.settings, agentMode: !ai.settings.agentMode }).catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Gagal menyimpan"))}
+                onToggleAgent={() =>
+                  void ai
+                    .save({ ...ai.settings, agentMode: !ai.settings.agentMode })
+                    .catch((error: unknown) => toast.error(error instanceof Error ? error.message : "Gagal menyimpan"))
+                }
                 onRunCommand={(text) => {
                   setShowTerminal(true)
                   setTerminalCommand({ text, nonce: Date.now() })
@@ -356,7 +511,22 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
             )}
           </div>
         </section>
-        <section className="relative min-h-0 flex-1">
+
+        {/* Desktop split-pane resize handle */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Ubah lebar panel"
+          title="Seret untuk mengubah lebar panel (klik ganda untuk reset)"
+          onPointerDown={startResize}
+          onDoubleClick={() => setCustomWidth(null)}
+          className={`hidden w-1 shrink-0 cursor-col-resize transition-colors lg:block ${
+            isResizing ? "bg-accent" : "bg-transparent hover:bg-accent/40"
+          }`}
+        />
+
+        <section className="relative min-h-0 min-w-0 flex-1">
+          {isResizing && <div className="absolute inset-0 z-30 cursor-col-resize" />}
           <PreviewPane
             files={files}
             entrypoint={project.entrypoint}
@@ -371,6 +541,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
           )}
         </section>
       </main>
+
       {showTerminal && (
         <TerminalPanel
           projectId={project.id}
@@ -388,7 +559,14 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
       )}
       {dialog === "projects" && <ProjectsDialog projects={projects} onClose={closeDialog} />}
       {dialog === "parts" && (
-        <PartSearchDialog projectId={project.id} onClose={closeDialog} onAddPart={addPart} onAskAi={askAiWithDraft} onOpenJlcImport={() => setDialog("import")} onAddKicadMod={addKicadMod} />
+        <PartSearchDialog
+          projectId={project.id}
+          onClose={closeDialog}
+          onAddPart={addPart}
+          onAskAi={askAiWithDraft}
+          onOpenJlcImport={() => setDialog("import")}
+          onAddKicadMod={addKicadMod}
+        />
       )}
       {dialog === "library" && (
         <LibraryDialog
