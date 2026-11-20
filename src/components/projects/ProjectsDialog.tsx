@@ -1,4 +1,4 @@
-import { Search } from "lucide-react"
+import { FolderOpen, Search, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import type { ProjectsState } from "../../hooks/useProjects"
 import { useLiveData } from "../../lib/live-data"
@@ -51,19 +51,28 @@ export function ProjectsDialog({ projects, onClose }: ProjectsDialogProps) {
 
   return (
     <Modal title="Proyek" wide onClose={onClose}>
-      <div className="mb-4 flex gap-1 border-b border-line" role="tablist">
-        {([["projects", "Proyek"], ["trash", "Tempat sampah"]] as const).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm ${tab === id ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-5 flex gap-1 rounded-xl border border-line bg-surface/70 p-1" role="tablist">
+        {([
+          ["projects", "Proyek", FolderOpen],
+          ["trash", "Tempat sampah", Trash2],
+        ] as const).map(([id, label, Icon]) => {
+          const active = tab === id
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(id)}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                active ? "bg-raised text-ink shadow-xs" : "text-muted hover:text-ink"
+              }`}
+            >
+              <Icon size={14} className={active ? "text-accent" : ""} />
+              {label}
+            </button>
+          )
+        })}
       </div>
 
       {tab === "trash" ? (
@@ -71,18 +80,18 @@ export function ProjectsDialog({ projects, onClose }: ProjectsDialogProps) {
       ) : (
         <div className="flex flex-col gap-4 sm:flex-row">
           <WorkspaceSidebar workspaces={workspaces} selectedId={workspaceId} onSelect={setWorkspaceId} />
-          <div className="min-w-0 flex-1 space-y-3">
+          <div className="min-w-0 flex-1 space-y-3.5">
             <NewProjectForm projects={projects} workspaceId={workspaceId} onDone={onClose} />
             <div className="flex gap-2">
               <label className="relative min-w-0 flex-1">
-                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                 <input
                   type="search"
                   aria-label="Cari proyek"
                   placeholder="Cari proyek…"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="h-9 w-full rounded-md border border-line bg-surface pl-8 pr-2 text-sm focus:border-accent focus:outline-none"
+                  className="h-9 w-full rounded-lg border border-line bg-surface pl-9 pr-3 text-sm text-ink placeholder:text-muted/55 transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                 />
               </label>
               <select aria-label="Urutkan" value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={`${SELECT_CLASS} w-36`}>
@@ -91,11 +100,11 @@ export function ProjectsDialog({ projects, onClose }: ProjectsDialogProps) {
               </select>
             </div>
             {visible.length === 0 ? (
-              <p className="rounded-md border border-dashed border-line p-6 text-center text-sm text-muted">
+              <p className="rounded-xl border border-dashed border-line bg-surface/40 p-8 text-center text-sm text-muted">
                 {query ? "Tidak ada proyek yang cocok." : "Belum ada proyek di workspace ini."}
               </p>
             ) : (
-              <ul className="divide-y divide-line rounded-md border border-line">
+              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface/40">
                 {visible.map((project) => (
                   <ProjectRow
                     key={project.id}

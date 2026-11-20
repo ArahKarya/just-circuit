@@ -52,36 +52,64 @@ interface HitRowProps {
 function HitRow({ hit, catalogChip, busy, onAddFromCatalog, onSaveToLibrary, onFromDatasheet, onOpenJlcImport }: HitRowProps) {
   const datasheetUrl = safeLink(hit.datasheetUrl)
   const productUrl = safeLink(hit.productUrl)
-  const facts = [hit.manufacturer, hit.package, formatStock(hit.stock), formatPrice(hit.price), hit.supplierPartNumber && hit.supplierPartNumber !== hit.title ? hit.supplierPartNumber : null].filter(Boolean)
+  const facts = [
+    hit.manufacturer,
+    hit.package,
+    formatStock(hit.stock),
+    formatPrice(hit.price),
+    hit.supplierPartNumber && hit.supplierPartNumber !== hit.title ? hit.supplierPartNumber : null,
+  ].filter(Boolean)
   return (
-    <li className="space-y-1.5 px-3 py-2">
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="break-all font-mono text-sm font-medium">{hit.title}</span>
+    <li className="space-y-2 px-3.5 py-3 transition hover:bg-raised/40">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="break-all font-mono text-sm font-semibold text-ink">{hit.title}</span>
         {facts.length > 0 && <span className="text-xs text-muted">{facts.join(" · ")}</span>}
       </div>
-      {hit.description && <p className="line-clamp-2 text-xs text-muted">{hit.description}</p>}
-      <div className="flex flex-wrap items-center gap-1">
+      {hit.description && <p className="line-clamp-2 text-xs leading-relaxed text-muted">{hit.description}</p>}
+      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
         {catalogChip && (
           <>
-            <Button variant="primary" disabled={busy} onClick={() => onAddFromCatalog(catalogChip, hit)}><PackagePlus size={14} /> Tambah ke proyek</Button>
-            <Button disabled={busy} onClick={() => onSaveToLibrary(catalogChip, hit)}><BookmarkPlus size={14} /> Simpan ke Library</Button>
+            <Button size="sm" variant="primary" disabled={busy} onClick={() => onAddFromCatalog(catalogChip, hit)}>
+              <PackagePlus size={13} /> Tambah ke proyek
+            </Button>
+            <Button size="sm" disabled={busy} onClick={() => onSaveToLibrary(catalogChip, hit)}>
+              <BookmarkPlus size={13} /> Simpan ke Library
+            </Button>
           </>
         )}
-        {hit.source === "jlcpcb" && <Button disabled={busy} onClick={() => onOpenJlcImport(hit)}><PackagePlus size={14} /> Impor lengkap (JLCPCB)</Button>}
-        {!catalogChip && datasheetUrl && (
-          <Button variant={hit.source === "jlcpcb" ? "ghost" : "primary"} disabled={busy} onClick={() => onFromDatasheet(hit)}>
-            <FileText size={14} /> Buat dari datasheet
+        {hit.source === "jlcpcb" && (
+          <Button size="sm" disabled={busy} onClick={() => onOpenJlcImport(hit)}>
+            <PackagePlus size={13} /> Impor lengkap (JLCPCB)
           </Button>
         )}
-        {hit.footprint && <Button onClick={() => void copy(hit.footprint ?? "", "Footprint disalin")}><Copy size={14} /> Salin footprint</Button>}
+        {!catalogChip && datasheetUrl && (
+          <Button size="sm" variant={hit.source === "jlcpcb" ? "ghost" : "primary"} disabled={busy} onClick={() => onFromDatasheet(hit)}>
+            <FileText size={13} /> Buat dari datasheet
+          </Button>
+        )}
+        {hit.footprint && (
+          <Button size="sm" onClick={() => void copy(hit.footprint ?? "", "Footprint disalin")}>
+            <Copy size={13} /> Salin footprint
+          </Button>
+        )}
         {datasheetUrl && (
-          <a href={datasheetUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-md px-2 text-xs text-muted hover:bg-raised hover:text-ink">
-            Datasheet <ExternalLink size={12} />
+          <a
+            href={datasheetUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs text-muted transition hover:bg-raised hover:text-ink"
+          >
+            Datasheet <ExternalLink size={11} />
           </a>
         )}
         {productUrl && (
-          <a href={productUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center gap-1 rounded-md px-2 text-xs text-muted hover:bg-raised hover:text-ink">
-            Halaman produk <ExternalLink size={12} />
+          <a
+            href={productUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-xs text-muted transition hover:bg-raised hover:text-ink"
+          >
+            Halaman produk <ExternalLink size={11} />
           </a>
         )}
       </div>
@@ -128,7 +156,12 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
   const saveToLibrary = (chip: string, hit: PartHit) =>
     void run(async () => {
       const part = await catalogPart(chip, hit)
-      await libraryRepo.create({ name: part.componentName, description: `${part.mpn}${part.description ? `: ${part.description}` : ""}`.slice(0, 500), entry: `${part.componentName}.tsx`, files: { [`${part.componentName}.tsx`]: part.tsx } })
+      await libraryRepo.create({
+        name: part.componentName,
+        description: `${part.mpn}${part.description ? `: ${part.description}` : ""}`.slice(0, 500),
+        entry: `${part.componentName}.tsx`,
+        files: { [`${part.componentName}.tsx`]: part.tsx },
+      })
       toast.success(`${part.componentName} disimpan ke Library`)
     })
 
@@ -163,10 +196,10 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
 
   return (
     <Modal title="Cari part" wide onClose={onClose}>
-      <div className="space-y-3">
+      <div className="space-y-4">
         <form onSubmit={search} className="flex gap-2">
           <label className="relative block flex-1">
-            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input
               autoFocus
               type="search"
@@ -175,14 +208,15 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
               value={query}
               maxLength={100}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-9 w-full rounded-md border border-line bg-surface pl-8 pr-2 text-sm focus:border-accent focus:outline-none"
+              className="h-9 w-full rounded-lg border border-line bg-surface pl-9 pr-3 text-sm text-ink placeholder:text-muted/55 transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
             />
           </label>
           <Button type="submit" variant="primary" disabled={!valid || searching || sources.size === 0}>
             {searching ? <LoaderCircle size={14} className="animate-spin" /> : <Search size={14} />} Cari
           </Button>
         </form>
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Sumber">
+
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Sumber">
           {PART_SOURCES.map((source) => {
             const on = sources.has(source)
             return (
@@ -190,14 +224,19 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
                 key={source}
                 type="button"
                 aria-pressed={on}
-                onClick={() => setSources((current) => {
-                  const next = new Set(current)
-                  if (on) next.delete(source)
-                  else next.add(source)
-                  return next
-                })}
-                className={`rounded-full border px-2 py-0.5 text-xs ${on ? "border-accent/50 bg-accent/10 text-ink" : "border-line text-muted line-through"}`}
+                onClick={() =>
+                  setSources((current) => {
+                    const next = new Set(current)
+                    if (on) next.delete(source)
+                    else next.add(source)
+                    return next
+                  })
+                }
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
+                  on ? "border-accent/40 bg-accent/10 text-ink" : "border-line bg-surface/40 text-muted line-through opacity-75 hover:opacity-100"
+                }`}
               >
+                <span className={`size-1.5 rounded-full ${on ? "bg-accent" : "bg-muted/50"}`} />
                 {PART_SOURCE_LABELS[source]}
               </button>
             )
@@ -205,27 +244,30 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
         </div>
 
         {result && result.errors.length > 0 && (
-          <p className="text-xs text-warn">Tidak bisa dihubungi: {result.errors.map((error) => `${PART_SOURCE_LABELS[error.source]} (${error.message})`).join(", ")}</p>
+          <p className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+            Tidak bisa dihubungi: {result.errors.map((error) => `${PART_SOURCE_LABELS[error.source]} (${error.message})`).join(", ")}
+          </p>
         )}
         {result && groups.length === 0 && (
-          <p className="rounded-md border border-dashed border-line p-4 text-center text-sm text-muted">
+          <p className="rounded-xl border border-dashed border-line bg-surface/40 p-6 text-center text-sm text-muted">
             Tidak ada hasil untuk "{result.query}". Coba nomor part tanpa akhiran kemasan (mis. ADS8688 bukan ADS8688IDBTR), atau unduh datasheet PDF-nya lalu lampirkan di chat.
           </p>
         )}
         {!result && (
-          <p className="text-xs text-muted">
+          <p className="rounded-xl border border-line bg-surface/40 p-3.5 text-xs leading-relaxed text-muted">
             Tidak terikat pada satu pabrik PCB: hasil dari katalog datasheet tscircuit, JLCPCB/LCSC, Texas Instruments, DigiKey, Mouser, footprint resmi KiCad dan registry tscircuit.
             Part tanpa file CAD dibuat dari datasheet-nya: server mengunduh PDF resmi lalu AI menyusun peta pin dan memilih footprint.
           </p>
         )}
 
-        <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+        <div className="max-h-[52vh] space-y-4 overflow-y-auto">
           {groups.map((group) => (
             <section key={group.source} aria-label={PART_SOURCE_LABELS[group.source]}>
-              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-                {PART_SOURCE_LABELS[group.source]} <span className="font-normal">({group.hits.length})</span>
+              <h3 className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                <span>{PART_SOURCE_LABELS[group.source]}</span>
+                <span className="rounded-full bg-raised px-1.5 py-0.2 font-normal tabular-nums">{group.hits.length}</span>
               </h3>
-              <ul className="divide-y divide-line rounded-md border border-line">
+              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface/40">
                 {group.hits.map((hit) => (
                   <HitRow
                     key={hit.key}
@@ -242,8 +284,9 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
             </section>
           ))}
         </div>
-        <section aria-label="Footprint KiCad sendiri" className="space-y-1.5 rounded-md border border-dashed border-line p-2.5">
-          <p className="text-xs text-muted">
+
+        <section aria-label="Footprint KiCad sendiri" className="space-y-2.5 rounded-xl border border-dashed border-line bg-surface/40 p-3.5">
+          <p className="text-xs leading-relaxed text-muted">
             Punya file footprint KiCad (.kicad_mod) dari situs pabrikan, SnapEDA atau Ultra Librarian? Unggah di sini; nama pin bisa diisi AI dari datasheet.
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -253,9 +296,11 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
               value={kicadPartName}
               maxLength={80}
               onChange={(event) => setKicadPartName(event.target.value)}
-              className="h-9 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-sm focus:border-accent focus:outline-none"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-sm text-ink placeholder:text-muted/55 transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
             />
-            <Button disabled={busy} onClick={() => kicadInput.current?.click()}><Upload size={14} /> Unggah .kicad_mod</Button>
+            <Button disabled={busy} onClick={() => kicadInput.current?.click()}>
+              <Upload size={14} /> Unggah .kicad_mod
+            </Button>
             <input
               ref={kicadInput}
               type="file"
@@ -270,16 +315,21 @@ export function PartSearchDialog({ projectId, onClose, onAddPart, onAskAi, onOpe
             />
           </div>
         </section>
-        <p className="text-xs text-muted">
-          Sudah punya nomor LCSC (C…)?{" "}
-          <button type="button" className="underline hover:text-ink" onClick={onOpenJlcImport}>Impor dari JLCPCB</button>{" "}
-          membawa simbol, footprint dan model 3D sekaligus.
-        </p>
-        {busy && (
-          <p className="flex items-center gap-1.5 text-xs text-muted" aria-live="polite">
-            <LoaderCircle size={12} className="animate-spin" /> Memproses…
+
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+          <p>
+            Sudah punya nomor LCSC (C…)?{" "}
+            <button type="button" className="font-medium text-accent underline underline-offset-2 hover:brightness-110" onClick={onOpenJlcImport}>
+              Impor dari JLCPCB
+            </button>{" "}
+            membawa simbol, footprint dan model 3D sekaligus.
           </p>
-        )}
+          {busy && (
+            <p className="flex items-center gap-1.5 font-medium text-accent" aria-live="polite">
+              <LoaderCircle size={12} className="animate-spin" /> Memproses…
+            </p>
+          )}
+        </div>
       </div>
     </Modal>
   )

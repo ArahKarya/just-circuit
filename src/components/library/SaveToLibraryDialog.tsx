@@ -51,23 +51,34 @@ export function SaveToLibraryDialog({ project, path, onClose }: SaveToLibraryDia
       footer={
         <>
           <Button onClick={onClose}>Batal</Button>
-          <Button variant="primary" disabled={busy || !selection.ok} onClick={() => void save()}>Simpan</Button>
+          <Button variant="primary" disabled={busy || !selection.ok} onClick={() => void save()}>
+            Simpan
+          </Button>
         </>
       }
     >
       {!selection.ok ? (
-        <p className="text-sm text-danger">{selection.error}</p>
+        <p className="rounded-lg border border-danger/35 bg-danger/10 p-3 text-sm text-danger">{selection.error}</p>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3.5">
           <Field label="Nama komponen" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-          <Field label="Keterangan" placeholder="mis. AMS1117-3.3 + kapasitor, input 5V" value={description} maxLength={500} onChange={(e) => setDescription(e.target.value)} />
-          <p className="text-xs text-muted">
-            {Object.keys(selection.value.files).length} file dari <span className="font-mono">{path}</span>, file utama <span className="font-mono">{selection.value.entry}</span>.
+          <Field
+            label="Keterangan"
+            placeholder="mis. AMS1117-3.3 + kapasitor, input 5V"
+            value={description}
+            maxLength={500}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <p className="rounded-lg border border-line bg-surface/50 px-3 py-2 text-xs text-muted">
+            {Object.keys(selection.value.files).length} file dari <span className="font-mono text-ink">{path}</span>, file utama{" "}
+            <span className="font-mono text-ink">{selection.value.entry}</span>.
           </p>
           {selection.value.missingImports.length > 0 && (
-            <p className="flex gap-2 rounded-md border border-line bg-raised p-2 text-xs text-warn">
-              <TriangleAlert size={14} className="shrink-0" />
-              Import berikut ada di luar {path} dan tidak ikut disimpan: {selection.value.missingImports.join(", ")}. Simpan foldernya sekalian, atau impor ulang di proyek tujuan.
+            <p className="flex items-start gap-2 rounded-xl border border-warn/30 bg-warn/10 p-3 text-xs leading-relaxed text-warn">
+              <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+              <span>
+                Import berikut ada di luar {path} dan tidak ikut disimpan: {selection.value.missingImports.join(", ")}. Simpan foldernya sekalian, atau impor ulang di proyek tujuan.
+              </span>
             </p>
           )}
         </div>
