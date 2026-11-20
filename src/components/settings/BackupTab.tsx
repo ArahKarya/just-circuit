@@ -14,27 +14,43 @@ interface BackupTabProps {
 
 const BACKUP_VERSION = 1
 
-const backupSchema = z.object({
-  /** Backups made when the app was called CDS carry `cds` instead. */
-  justCircuit: z.literal("settings-backup").optional(),
-  cds: z.literal("settings-backup").optional(),
-  version: z.literal(BACKUP_VERSION),
-  ai: z.object({
-    activeConnectionId: z.string().nullable(),
-    autoFixConnectionId: z.string().nullable().optional(),
-    temperature: z.number(),
-    maxOutputTokens: z.number(),
-    autoFixAttempts: z.number(),
-    historyLimit: z.number().optional(),
-    connections: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(["openai-compatible", "anthropic", "gemini"]), baseUrl: z.string(), model: z.string() }).passthrough()),
-  }),
-  preferences: z.record(z.string(), z.unknown()),
-}).refine((backup) => backup.justCircuit || backup.cds, "Bukan file backup Just Circuit")
+const backupSchema = z
+  .object({
+    /** Backups made when the app was called CDS carry `cds` instead. */
+    justCircuit: z.literal("settings-backup").optional(),
+    cds: z.literal("settings-backup").optional(),
+    version: z.literal(BACKUP_VERSION),
+    ai: z.object({
+      activeConnectionId: z.string().nullable(),
+      autoFixConnectionId: z.string().nullable().optional(),
+      temperature: z.number(),
+      maxOutputTokens: z.number(),
+      autoFixAttempts: z.number(),
+      historyLimit: z.number().optional(),
+      connections: z.array(
+        z
+          .object({
+            id: z.string(),
+            name: z.string(),
+            kind: z.enum(["openai-compatible", "anthropic", "gemini"]),
+            baseUrl: z.string(),
+            model: z.string(),
+          })
+          .passthrough(),
+      ),
+    }),
+    preferences: z.record(z.string(), z.unknown()),
+  })
+  .refine((backup) => backup.justCircuit || backup.cds, "Bukan file backup Just Circuit")
 
 /** Settings without API keys, as a downloadable JSON file. */
 function backupJson(ai: AiSettings, preferences: Preferences): string {
   const connections = ai.connections.map(({ apiKey: _key, hasApiKey: _has, clearApiKey: _clear, ...rest }) => rest)
-  return JSON.stringify({ justCircuit: "settings-backup", version: BACKUP_VERSION, exportedAt: new Date().toISOString(), ai: { ...ai, connections }, preferences }, null, 2)
+  return JSON.stringify(
+    { justCircuit: "settings-backup", version: BACKUP_VERSION, exportedAt: new Date().toISOString(), ai: { ...ai, connections }, preferences },
+    null,
+    2,
+  )
 }
 
 export function BackupTab({ ai, preferences, onImport }: BackupTabProps) {
@@ -62,11 +78,19 @@ export function BackupTab({ ai, preferences, onImport }: BackupTabProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted">Cadangan berisi koneksi AI (tanpa API key) dan preferensi tampilan. Proyek dicadangkan lewat folder data server atau Unduh ZIP.</p>
+    <div className="space-y-4 rounded-xl border border-line bg-surface/40 p-4">
+      <p className="text-xs leading-relaxed text-muted">
+        Cadangan berisi koneksi AI (tanpa API key) dan preferensi tampilan. Proyek dicadangkan lewat folder data server atau Unduh ZIP.
+      </p>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={download}><Download size={15} />Unduh cadangan</Button>
-        <Button onClick={() => input.current?.click()}><Upload size={15} />Muat cadangan</Button>
+        <Button variant="primary" onClick={download}>
+          <Download size={14} />
+          Unduh cadangan
+        </Button>
+        <Button onClick={() => input.current?.click()}>
+          <Upload size={14} />
+          Muat cadangan
+        </Button>
         <input
           ref={input}
           type="file"
@@ -80,7 +104,16 @@ export function BackupTab({ ai, preferences, onImport }: BackupTabProps) {
           }}
         />
       </div>
-      {message && <p role={message.ok ? "status" : "alert"} className={`text-sm ${message.ok ? "text-accent" : "text-danger"}`}>{message.text}</p>}
+      {message && (
+        <p
+          role={message.ok ? "status" : "alert"}
+          className={`rounded-lg border px-3 py-2 text-xs ${
+            message.ok ? "border-accent/30 bg-accent/10 text-accent" : "border-danger/35 bg-danger/10 text-danger"
+          }`}
+        >
+          {message.text}
+        </p>
+      )}
     </div>
   )
 }

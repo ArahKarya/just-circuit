@@ -21,27 +21,36 @@ export function ProjectTab({ projectName, draft, setDraft, connections }: Projec
   const rules = draft.aiRules ?? ""
 
   return (
-    <div className="space-y-5">
-      <p className="text-xs text-muted">Berlaku hanya untuk proyek <span className="font-medium text-ink">{projectName}</span>.</p>
-      <SelectField
-        label="Koneksi AI untuk proyek ini"
-        options={options}
-        value={draft.connectionId ?? ""}
-        onChange={(e) => setDraft((d) => ({ ...d, connectionId: e.target.value || null }))}
-      />
-      <label className="block space-y-1">
-        <span className="text-xs font-medium text-muted">Aturan tambahan untuk AI</span>
-        <textarea
-          aria-label="Aturan tambahan untuk AI"
-          rows={8}
-          maxLength={MAX_PROJECT_RULES_CHARS}
-          placeholder={RULES_PLACEHOLDER}
-          value={rules}
-          onChange={(e) => setDraft((d) => ({ ...d, aiRules: e.target.value }))}
-          className="w-full rounded-md border border-line bg-surface p-2.5 font-mono text-xs text-ink placeholder:text-muted/60 focus:border-accent focus:outline-none"
+    <div className="space-y-4">
+      <p className="text-xs text-muted">
+        Berlaku hanya untuk proyek <span className="font-semibold text-ink">{projectName}</span>.
+      </p>
+      <div className="space-y-4 rounded-xl border border-line bg-surface/40 p-4">
+        <SelectField
+          label="Koneksi AI untuk proyek ini"
+          options={options}
+          value={draft.connectionId ?? ""}
+          onChange={(e) => setDraft((d) => ({ ...d, connectionId: e.target.value || null }))}
         />
-        <span className="block text-xs text-muted">Dikirim ke AI di setiap permintaan untuk proyek ini. {rules.length}/{MAX_PROJECT_RULES_CHARS}</span>
-      </label>
+        <label className="block space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted">Aturan tambahan untuk AI</span>
+            <span className="font-mono text-[11px] text-muted tabular-nums">
+              {rules.length}/{MAX_PROJECT_RULES_CHARS}
+            </span>
+          </div>
+          <textarea
+            aria-label="Aturan tambahan untuk AI"
+            rows={8}
+            maxLength={MAX_PROJECT_RULES_CHARS}
+            placeholder={RULES_PLACEHOLDER}
+            value={rules}
+            onChange={(e) => setDraft((d) => ({ ...d, aiRules: e.target.value }))}
+            className="w-full rounded-lg border border-line bg-surface p-3 font-mono text-xs leading-relaxed text-ink placeholder:text-muted/55 transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+          />
+          <span className="block text-[11px] text-muted">Dikirim ke AI di setiap permintaan untuk proyek ini.</span>
+        </label>
+      </div>
     </div>
   )
 }

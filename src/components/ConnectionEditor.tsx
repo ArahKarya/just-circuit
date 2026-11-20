@@ -81,18 +81,16 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5">
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Nama" value={connection.name} onChange={(e) => update({ name: e.target.value })} />
-        <label className="block space-y-1">
-          <span className="text-xs font-medium text-muted">Jenis API</span>
-          <select
-            value={connection.kind}
-            onChange={(e) => update({ kind: e.target.value as ProviderKind })}
-            className={SELECT_CLASS}
-          >
+        <label className="block space-y-1.5">
+          <span className="block text-xs font-medium text-muted">Jenis API</span>
+          <select value={connection.kind} onChange={(e) => update({ kind: e.target.value as ProviderKind })} className={SELECT_CLASS}>
             {(Object.keys(KIND_LABELS) as ProviderKind[]).map((kind) => (
-              <option key={kind} value={kind}>{KIND_LABELS[kind]}</option>
+              <option key={kind} value={kind}>
+                {KIND_LABELS[kind]}
+              </option>
             ))}
           </select>
         </label>
@@ -124,9 +122,17 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
       </div>
       <div className="flex items-end gap-2">
         <div className="flex-1">
-          <Field label="Model" list={listId} value={connection.model} placeholder="mis. gemini-2.5-flash" onChange={(e) => update({ model: e.target.value })} />
+          <Field
+            label="Model"
+            list={listId}
+            value={connection.model}
+            placeholder="mis. gemini-2.5-flash"
+            onChange={(e) => update({ model: e.target.value })}
+          />
           <datalist id={listId}>
-            {models.map((model) => <option key={model} value={model} />)}
+            {models.map((model) => (
+              <option key={model} value={model} />
+            ))}
           </datalist>
         </div>
         <Button onClick={() => void loadModels()} disabled={modelsState.loading}>
@@ -135,7 +141,7 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
         </Button>
       </div>
       {modelsState.error && <p className="text-xs text-danger">{modelsState.error}</p>}
-      {!modelsState.error && models.length > 0 && <p className="text-xs text-muted">{models.length} model ditemukan, pilih dari kolom Model.</p>}
+      {!modelsState.error && models.length > 0 && <p className="text-xs text-accent">{models.length} model ditemukan, pilih dari kolom Model.</p>}
       <div className="grid gap-3 sm:grid-cols-3">
         <SelectField
           id={`reasoning-${connection.id}`}
@@ -165,9 +171,13 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
           onChange={(e) => update({ idleTimeoutSec: seconds(e.target.value) })}
         />
       </div>
-      <p className="text-xs text-muted">Thinking membuat jawaban lebih teliti tapi lebih lama. Kalau provider menolak (error 400), kembalikan ke "Bawaan provider". Kosongkan batas waktu untuk memakai bawaan server.</p>
-      <div className="space-y-1">
-        <label htmlFor={`temperature-${connection.id}`} className="text-xs font-medium text-muted">Temperature</label>
+      <p className="text-[11px] leading-relaxed text-muted">
+        Thinking membuat jawaban lebih teliti tapi lebih lama. Kalau provider menolak (error 400), kembalikan ke "Bawaan provider". Kosongkan batas waktu untuk memakai bawaan server.
+      </p>
+      <div className="space-y-1.5">
+        <label htmlFor={`temperature-${connection.id}`} className="block text-xs font-medium text-muted">
+          Temperature
+        </label>
         <select
           id={`temperature-${connection.id}`}
           value={connection.temperatureMode ?? "auto"}
@@ -175,18 +185,28 @@ export function ConnectionEditor({ connection, onChange }: ConnectionEditorProps
           className={SELECT_CLASS}
         >
           {(Object.keys(TEMPERATURE_LABELS) as TemperatureMode[]).map((mode) => (
-            <option key={mode} value={mode}>{TEMPERATURE_LABELS[mode]}</option>
+            <option key={mode} value={mode}>
+              {TEMPERATURE_LABELS[mode]}
+            </option>
           ))}
         </select>
-        <p className="text-xs text-muted">{temperatureHint(connection)}</p>
+        <p className="text-[11px] text-muted">{temperatureHint(connection)}</p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <Button onClick={() => void runTest()} disabled={test.status === "running" || !connection.model.trim()}>
-          {test.status === "running" ? <Loader2 size={15} className="animate-spin" /> : <PlugZap size={15} />}
+          {test.status === "running" ? <Loader2 size={14} className="animate-spin" /> : <PlugZap size={14} className="text-accent" />}
           Tes koneksi
         </Button>
-        {test.status === "ok" && <span role="status" className="text-xs text-accent">{test.text}</span>}
-        {test.status === "error" && <span role="alert" className="text-xs text-danger">{test.text}</span>}
+        {test.status === "ok" && (
+          <span role="status" className="rounded-lg border border-accent/30 bg-accent/10 px-2.5 py-1 text-xs text-accent">
+            {test.text}
+          </span>
+        )}
+        {test.status === "error" && (
+          <span role="alert" className="rounded-lg border border-danger/35 bg-danger/10 px-2.5 py-1 text-xs text-danger">
+            {test.text}
+          </span>
+        )}
       </div>
     </div>
   )

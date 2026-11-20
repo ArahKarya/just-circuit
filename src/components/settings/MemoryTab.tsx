@@ -12,14 +12,40 @@ interface MemoryTabProps {
   setDraft: Dispatch<SetStateAction<MemoryDraft | null>>
 }
 
-const TEXTAREA = "w-full rounded-md border border-line bg-surface p-2.5 font-mono text-xs text-ink placeholder:text-muted/60 focus:border-accent focus:outline-none"
+const TEXTAREA =
+  "w-full rounded-lg border border-line bg-surface p-3 font-mono text-xs leading-relaxed text-ink placeholder:text-muted/55 transition focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
 
-function MemoryField({ label, hint, value, placeholder, onChange }: { label: string; hint: string; value: string; placeholder: string; onChange: (value: string) => void }) {
+function MemoryField({
+  label,
+  hint,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string
+  hint: string
+  value: string
+  placeholder: string
+  onChange: (value: string) => void
+}) {
   return (
-    <label className="block space-y-1">
-      <span className="text-xs font-medium text-muted">{label}</span>
-      <textarea aria-label={label} rows={7} maxLength={MAX_MEMORY_CHARS} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} className={TEXTAREA} />
-      <span className="block text-xs text-muted">{hint} {value.length}/{MAX_MEMORY_CHARS}</span>
+    <label className="block space-y-1.5 rounded-xl border border-line bg-surface/40 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-ink">{label}</span>
+        <span className="font-mono text-[11px] text-muted tabular-nums">
+          {value.length}/{MAX_MEMORY_CHARS}
+        </span>
+      </div>
+      <textarea
+        aria-label={label}
+        rows={7}
+        maxLength={MAX_MEMORY_CHARS}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={TEXTAREA}
+      />
+      <span className="block text-[11px] text-muted">{hint}</span>
     </label>
   )
 }
@@ -27,8 +53,8 @@ function MemoryField({ label, hint, value, placeholder, onChange }: { label: str
 export function MemoryTab({ projectName, draft, setDraft }: MemoryTabProps) {
   if (!draft) return <p className="text-sm text-muted">Memuat memori…</p>
   return (
-    <div className="space-y-5">
-      <p className="text-xs text-muted">
+    <div className="space-y-4">
+      <p className="text-xs leading-relaxed text-muted">
         Memori selalu dikirim ke AI. AI menambahkan catatan sendiri saat ada keputusan penting; kamu bisa mengubah atau menghapusnya di sini.
       </p>
       <MemoryField
