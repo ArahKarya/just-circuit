@@ -2,7 +2,7 @@ import { CircuitBoard, FileArchive, Plus } from "lucide-react"
 import { useRef, useState } from "react"
 import toast from "react-hot-toast"
 import type { ProjectsState } from "../../hooks/useProjects"
-import { importKicadFiles } from "../../lib/kicad-import"
+import { importKicadFiles, kicadImportNote, MAX_KICAD_FILE_BYTES } from "../../lib/kicad-import"
 import { attempt } from "../../lib/notify"
 import { DEFAULT_TEMPLATE_ID, findTemplate, PROJECT_TEMPLATES } from "../../lib/templates"
 import { readProjectZip } from "../../lib/zip-import"
@@ -45,10 +45,14 @@ export function NewProjectForm({ projects, workspaceId, onDone }: NewProjectForm
 
   const importKicad = (fileList: FileList) =>
     run(async () => {
+      const tooBig = [...fileList].find((f) => f.size > MAX_KICAD_FILE_BYTES)
+      if (tooBig) throw new Error(`${tooBig.name} terlalu besar untuk diimpor (maks ${MAX_KICAD_FILE_BYTES / 1024 / 1024} MB)`)
       const files = await Promise.all([...fileList].map(async (f) => ({ name: f.name, content: await f.text() })))
+      // Let the busy state paint before the synchronous parse blocks the main thread.
+      await new Promise((resolve) => setTimeout(resolve, 0))
       const imported = importKicadFiles(files)
       await projects.insert({ name: imported.name, entrypoint: imported.entrypoint, files: imported.files, workspaceId })
-      toast.success(`${imported.name} diimpor dari KiCad (${imported.stats.components} komponen, ${imported.stats.traces} trace)`)
+      toast.success(`${imported.name} diimpor dari KiCad (${imported.stats.components} komponen, ${imported.stats.traces} trace)${kicadImportNote(imported.notes)}`)
     })
 
   return (
