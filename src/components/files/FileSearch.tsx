@@ -28,7 +28,7 @@ export function FileSearch({ files, onOpen }: FileSearchProps) {
           placeholder="Cari di semua file…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="h-8 min-w-0 flex-1 rounded border border-line bg-surface px-2 text-xs focus:border-accent focus:outline-none"
+          className="h-8 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-xs text-ink placeholder:text-muted/55 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
         />
         <button
           type="button"
@@ -36,22 +36,32 @@ export function FileSearch({ files, onOpen }: FileSearchProps) {
           aria-pressed={caseSensitive}
           title="Bedakan huruf besar/kecil"
           onClick={() => setCaseSensitive((v) => !v)}
-          className={`flex size-8 items-center justify-center rounded border ${caseSensitive ? "border-accent text-accent" : "border-line text-muted"}`}
+          className={`flex size-8 shrink-0 items-center justify-center rounded-md border transition ${
+            caseSensitive ? "border-accent/50 bg-accent/12 text-accent" : "border-line bg-surface text-muted hover:text-ink"
+          }`}
         >
           <CaseSensitive size={15} />
         </button>
       </div>
       {debounced && (
-        <p className="text-xs text-muted">
-          {result.hits.length === 0 ? "Tidak ditemukan." : `${result.hits.length}${result.truncated ? `+ (maks ${MAX_SEARCH_HITS})` : ""} hasil di ${fileCount} file`}
+        <p className="px-0.5 text-[11px] font-medium text-muted tabular-nums">
+          {result.hits.length === 0
+            ? "Tidak ditemukan."
+            : `${result.hits.length}${result.truncated ? `+ (maks ${MAX_SEARCH_HITS})` : ""} hasil di ${fileCount} file`}
         </p>
       )}
-      <ul className="min-h-0 flex-1 overflow-y-auto" aria-label="Hasil pencarian">
+      <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto" aria-label="Hasil pencarian">
         {result.hits.map((hit) => (
           <li key={`${hit.path}:${hit.line}`}>
-            <button type="button" onClick={() => onOpen(hit.path, hit.line, hit.column)} className="block w-full rounded px-1.5 py-1 text-left hover:bg-raised">
-              <span className="block truncate font-mono text-[11px] text-muted">{hit.path}:{hit.line}</span>
-              <span className="block truncate font-mono text-xs text-ink">{hit.preview}</span>
+            <button
+              type="button"
+              onClick={() => onOpen(hit.path, hit.line, hit.column)}
+              className="block w-full rounded-md border border-transparent px-2 py-1.5 text-left transition hover:border-line hover:bg-raised"
+            >
+              <span className="block truncate font-mono text-[11px] text-accent">
+                {hit.path}:{hit.line}
+              </span>
+              <span className="mt-0.5 block truncate font-mono text-xs text-ink">{hit.preview}</span>
             </button>
           </li>
         ))}

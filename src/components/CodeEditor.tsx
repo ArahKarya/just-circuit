@@ -1,5 +1,5 @@
 import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react"
-import { FilePlus, Files, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react"
+import { FileCode2, FileJson, FilePlus, Files, FileText, PanelLeftClose, PanelLeftOpen, Search, Star } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { buildTree } from "../lib/file-tree"
 import type { Preferences, Project } from "../lib/types"
@@ -42,7 +42,23 @@ function languageOf(path: string): string {
   return "typescript"
 }
 
-export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCreateFile, editorPrefs, theme, revealRequest, ...fileActions }: CodeEditorProps) {
+function ActiveFileIcon({ path }: { path: string }) {
+  if (path.endsWith(".json")) return <FileJson size={13} className="shrink-0 text-warn" />
+  if (path.endsWith(".md") || path.endsWith(".txt") || path.endsWith(".csv")) return <FileText size={13} className="shrink-0 text-muted" />
+  return <FileCode2 size={13} className="shrink-0 text-info" />
+}
+
+export function CodeEditor({
+  project,
+  activeFile,
+  onSelectFile,
+  onChange,
+  onCreateFile,
+  editorPrefs,
+  theme,
+  revealRequest,
+  ...fileActions
+}: CodeEditorProps) {
   const [showExplorer, setShowExplorer] = useState(true)
   const [view, setView] = useState<ExplorerView>("files")
   const [newFile, setNewFile] = useState<string | null>(null)
@@ -79,12 +95,37 @@ export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCrea
   return (
     <div className="flex h-full min-h-0">
       {showExplorer && (
-        <aside className="flex w-48 shrink-0 flex-col border-r border-line" aria-label="Penjelajah file">
-          <div className="flex shrink-0 items-center gap-0.5 border-b border-line px-1 py-1">
-            <IconButton label="File" aria-pressed={view === "files"} className={`size-7 ${view === "files" ? "text-ink" : ""}`} onClick={() => setView("files")}><Files size={14} /></IconButton>
-            <IconButton label="Cari di semua file" aria-pressed={view === "search"} className={`size-7 ${view === "search" ? "text-ink" : ""}`} onClick={() => setView("search")}><Search size={14} /></IconButton>
-            <IconButton label="File baru" className="size-7" onClick={() => { setView("files"); setNewFile("lib/") }}><FilePlus size={14} /></IconButton>
-            <IconButton label="Sembunyikan penjelajah" className="ml-auto size-7" onClick={() => setShowExplorer(false)}><PanelLeftClose size={14} /></IconButton>
+        <aside className="flex w-52 shrink-0 flex-col border-r border-line bg-surface/35" aria-label="Penjelajah file">
+          <div className="flex h-9 shrink-0 items-center gap-0.5 border-b border-line px-1.5">
+            <IconButton
+              label="File"
+              aria-pressed={view === "files"}
+              className={`size-7 rounded-md ${view === "files" ? "bg-raised text-ink" : ""}`}
+              onClick={() => setView("files")}
+            >
+              <Files size={14} />
+            </IconButton>
+            <IconButton
+              label="Cari di semua file"
+              aria-pressed={view === "search"}
+              className={`size-7 rounded-md ${view === "search" ? "bg-raised text-ink" : ""}`}
+              onClick={() => setView("search")}
+            >
+              <Search size={14} />
+            </IconButton>
+            <IconButton
+              label="File baru"
+              className="size-7 rounded-md"
+              onClick={() => {
+                setView("files")
+                setNewFile("lib/")
+              }}
+            >
+              <FilePlus size={14} />
+            </IconButton>
+            <IconButton label="Sembunyikan penjelajah" className="ml-auto size-7 rounded-md" onClick={() => setShowExplorer(false)}>
+              <PanelLeftClose size={14} />
+            </IconButton>
           </div>
           {view === "search" ? (
             <FileSearch
@@ -95,10 +136,10 @@ export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCrea
               }}
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto px-1">
+            <div className="min-h-0 flex-1 overflow-y-auto px-1.5">
               {newFile !== null && (
                 <form
-                  className="space-y-1 py-1"
+                  className="space-y-1.5 py-2"
                   onSubmit={(event) => {
                     event.preventDefault()
                     submitNewFile()
@@ -110,7 +151,7 @@ export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCrea
                     value={newFile}
                     onChange={(e) => setNewFile(e.target.value)}
                     onKeyDown={(e) => e.key === "Escape" && setNewFile(null)}
-                    className="h-7 w-full rounded border border-accent bg-surface px-1.5 font-mono text-xs"
+                    className="h-7 w-full rounded-md border border-accent bg-surface px-2 font-mono text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent/20"
                   />
                   <p className="px-0.5 text-[11px] leading-4 text-muted">Pakai / untuk folder, mis. lib/power.tsx. Enter untuk buat.</p>
                 </form>
@@ -121,11 +162,19 @@ export function CodeEditor({ project, activeFile, onSelectFile, onChange, onCrea
         </aside>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-8 shrink-0 items-center gap-1 border-b border-line px-1 text-xs text-muted">
+        <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-line bg-surface/25 px-2 text-xs text-muted">
           {!showExplorer && (
-            <IconButton label="Tampilkan penjelajah" className="size-7" onClick={() => setShowExplorer(true)}><PanelLeftOpen size={14} /></IconButton>
+            <IconButton label="Tampilkan penjelajah" className="size-7 rounded-md" onClick={() => setShowExplorer(true)}>
+              <PanelLeftOpen size={14} />
+            </IconButton>
           )}
-          <span className="truncate px-1 font-mono">{activeFile}</span>
+          <ActiveFileIcon path={activeFile} />
+          <span className="truncate font-mono text-ink">{activeFile}</span>
+          {activeFile === project.entrypoint && (
+            <span className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-accent/25 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
+              <Star size={9} className="fill-accent" /> utama
+            </span>
+          )}
         </div>
         <div className="min-h-0 flex-1">
           <Editor

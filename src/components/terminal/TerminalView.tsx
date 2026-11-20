@@ -20,8 +20,8 @@ interface TerminalViewProps {
 }
 
 const THEMES = {
-  dark: { background: "#0f1115", foreground: "#e6e8ec", cursor: "#34d399", selectionBackground: "#34d39955" },
-  light: { background: "#ffffff", foreground: "#16181d", cursor: "#059669", selectionBackground: "#05966944" },
+  dark: { background: "#0b0d12", foreground: "#edf0f5", cursor: "#10b981", selectionBackground: "#10b98144" },
+  light: { background: "#f4f6f9", foreground: "#131722", cursor: "#059669", selectionBackground: "#05966933" },
 } as const
 
 function socketUrl(projectId: string, cols: number, rows: number): string {

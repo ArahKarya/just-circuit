@@ -1,7 +1,7 @@
 import { Hammer, History, Maximize2, Minimize2, Plus, TerminalSquare, X } from "lucide-react"
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
-import { useLiveData } from "../../lib/live-data"
 import { api } from "../../lib/api"
+import { useLiveData } from "../../lib/live-data"
 import { IconButton } from "../ui"
 import { TerminalView, type TerminalHandle } from "./TerminalView"
 
@@ -54,9 +54,12 @@ export function TerminalPanel({ projectId, projectName, theme, command, onComman
     if (status.data?.enabled && sessions.length === 0) openSession()
   }, [status.data?.enabled, sessions.length, openSession])
 
-  useEffect(() => () => {
-    if (settleTimer.current) clearTimeout(settleTimer.current)
-  }, [])
+  useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current)
+    },
+    [],
+  )
 
   // Run a proposed command once a shell exists (the view queues it until its socket opens).
   const lastNonce = useRef<number | null>(null)
@@ -100,45 +103,78 @@ export function TerminalPanel({ projectId, projectName, theme, command, onComman
   const active = sessions.find((s) => s.key === activeKey)
 
   return (
-    <section aria-label="Terminal" className="flex shrink-0 flex-col border-t border-line bg-panel" style={{ height: maximized ? "70vh" : height }}>
-      <div role="separator" aria-orientation="horizontal" aria-label="Ubah tinggi terminal" onPointerDown={startResize} className="h-1 cursor-row-resize hover:bg-accent/40" />
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-line px-2">
-        <TerminalSquare size={15} className="text-muted" />
+    <section
+      aria-label="Terminal"
+      className="flex shrink-0 flex-col border-t border-line bg-panel shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.45)]"
+      style={{ height: maximized ? "70vh" : height }}
+    >
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Ubah tinggi terminal"
+        onPointerDown={startResize}
+        className="flex h-1.5 cursor-row-resize items-center justify-center transition-colors hover:bg-accent/25"
+      >
+        <span className="h-0.5 w-10 rounded-full bg-line" />
+      </div>
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-line bg-surface/40 px-2.5">
+        <TerminalSquare size={14} className="shrink-0 text-accent" />
         <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto" role="tablist" aria-label="Sesi terminal">
           {sessions.map((session, index) => (
-            <div key={session.key} className={`group flex shrink-0 items-center rounded text-xs ${session.key === activeKey ? "bg-raised text-ink" : "text-muted hover:text-ink"}`}>
+            <div
+              key={session.key}
+              className={`group flex shrink-0 items-center rounded-md border text-xs transition ${
+                session.key === activeKey
+                  ? "border-line bg-raised font-medium text-ink"
+                  : "border-transparent text-muted hover:text-ink"
+              }`}
+            >
               <button type="button" role="tab" aria-selected={session.key === activeKey} className="px-2 py-1" onClick={() => setActiveKey(session.key)}>
                 {index + 1}. {session.label}
                 {session.ended && " (selesai)"}
               </button>
-              <button type="button" aria-label={`Tutup terminal ${index + 1}`} className="pr-1.5 opacity-60 hover:opacity-100" onClick={() => closeSession(session.key)}>
+              <button
+                type="button"
+                aria-label={`Tutup terminal ${index + 1}`}
+                className="pr-1.5 opacity-60 transition hover:text-danger hover:opacity-100"
+                onClick={() => closeSession(session.key)}
+              >
                 <X size={11} />
               </button>
             </div>
           ))}
         </div>
-        {QUICK_COMMANDS.map(({ label, command, icon: Icon }) => (
-          <button
-            key={label}
-            type="button"
-            disabled={!active || active.ended}
-            onClick={() => activeKey !== null && handles.current.get(activeKey)?.run(command)}
-            className="flex shrink-0 items-center gap-1 rounded px-2 py-1 font-mono text-xs text-muted hover:bg-raised hover:text-ink disabled:opacity-40"
-          >
-            <Icon size={12} />
-            {label}
-          </button>
-        ))}
-        <IconButton label="Terminal baru" className="size-7" disabled={!status.data?.enabled} onClick={openSession}><Plus size={14} /></IconButton>
-        <IconButton label={maximized ? "Kecilkan terminal" : "Besarkan terminal"} className="size-7" onClick={() => setMaximized((v) => !v)}>
+        <div className="flex shrink-0 items-center gap-1">
+          {QUICK_COMMANDS.map(({ label, command, icon: Icon }) => (
+            <button
+              key={label}
+              type="button"
+              disabled={!active || active.ended}
+              onClick={() => activeKey !== null && handles.current.get(activeKey)?.run(command)}
+              className="flex shrink-0 items-center gap-1 rounded-md border border-line bg-surface/70 px-2 py-1 font-mono text-[11px] text-muted transition hover:border-accent/40 hover:bg-raised hover:text-ink disabled:opacity-40"
+            >
+              <Icon size={11} className="text-accent" />
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="h-4 w-px bg-line" aria-hidden="true" />
+        <IconButton label="Terminal baru" className="size-7 rounded-md" disabled={!status.data?.enabled} onClick={openSession}>
+          <Plus size={14} />
+        </IconButton>
+        <IconButton label={maximized ? "Kecilkan terminal" : "Besarkan terminal"} className="size-7 rounded-md" onClick={() => setMaximized((v) => !v)}>
           {maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
         </IconButton>
-        <IconButton label="Tutup panel terminal" className="size-7" onClick={onClose}><X size={14} /></IconButton>
+        <IconButton label="Tutup panel terminal" className="size-7 rounded-md" onClick={onClose}>
+          <X size={14} />
+        </IconButton>
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 bg-surface">
         {status.error && <p className="p-3 text-sm text-danger">{status.error.message}</p>}
         {status.data && !status.data.enabled && (
-          <p className="p-3 text-sm text-muted">Terminal dimatikan di server. Set <code className="font-mono">ENABLE_TERMINAL=true</code> di .env lalu restart (pastikan login dengan password aktif).</p>
+          <p className="p-3 text-sm text-muted">
+            Terminal dimatikan di server. Set <code className="rounded bg-raised px-1 py-0.5 font-mono text-xs">ENABLE_TERMINAL=true</code> di .env lalu restart (pastikan login dengan password aktif).
+          </p>
         )}
         {sessions.map((session) => (
           <TerminalView

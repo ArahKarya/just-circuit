@@ -1,4 +1,4 @@
-import { CircleAlert, CircuitBoard, Sparkles, TriangleAlert } from "lucide-react"
+import { CheckCircle2, CircleAlert, Loader2, Sparkles, TriangleAlert } from "lucide-react"
 import { useMemo, useState } from "react"
 import type { DesignIssue, IssueCategory } from "../lib/drc"
 import { Button } from "./ui"
@@ -32,7 +32,7 @@ export function ProblemsPanel({ issues, isBuilding, onRevealComponent, onAskAiTo
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line px-3 py-1.5 text-xs" role="group" aria-label="Saring masalah">
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-line bg-surface/35 px-3 py-2 text-xs" role="group" aria-label="Saring masalah">
         {([
           ["all", `Semua ${issues.length}`],
           ["error", `Error ${errors.length}`],
@@ -43,52 +43,79 @@ export function ProblemsPanel({ issues, isBuilding, onRevealComponent, onAskAiTo
             type="button"
             aria-pressed={filter === id}
             onClick={() => setFilter(id)}
-            className={`rounded px-2 py-1 ${filter === id ? "bg-raised text-ink" : "text-muted hover:text-ink"}`}
+            className={`rounded-md px-2.5 py-1 font-medium tabular-nums transition ${
+              filter === id
+                ? "bg-raised text-ink shadow-xs"
+                : "text-muted hover:bg-raised/50 hover:text-ink"
+            }`}
           >
             {label}
           </button>
         ))}
         {errors.length > 0 && (
-          <Button className="ml-auto min-h-7 px-2 text-xs" disabled={!canAskAi} onClick={() => onAskAiToFix(errors)} title="Kirim semua error ke AI">
+          <Button
+            size="sm"
+            variant="primary"
+            className="ml-auto"
+            disabled={!canAskAi}
+            onClick={() => onAskAiToFix(errors)}
+            title="Kirim semua error ke AI"
+          >
             <Sparkles size={13} /> Minta AI perbaiki
           </Button>
         )}
       </div>
-      {notFound && <p className="shrink-0 px-3 py-1.5 text-xs text-warn">Deklarasi {notFound} tidak ditemukan di kode (mungkin dibuat lewat map/fungsi).</p>}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+
+      {notFound && (
+        <p className="shrink-0 border-b border-warn/25 bg-warn/10 px-3 py-2 text-xs text-warn">
+          Deklarasi <span className="font-mono font-medium">{notFound}</span> tidak ditemukan di kode (mungkin dibuat lewat map/fungsi).
+        </p>
+      )}
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {isBuilding && issues.length === 0 ? (
-          <p className="p-4 text-sm text-muted">Membangun…</p>
+          <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
+            <Loader2 size={15} className="animate-spin text-accent" />
+            Membangun…
+          </div>
         ) : visible.length === 0 ? (
-          <p className="flex items-center gap-2 p-4 text-sm text-muted">
-            <CircuitBoard size={16} className="text-accent" />
-            {issues.length === 0 ? "Tidak ada masalah DRC/ERC." : "Tidak ada yang cocok dengan saringan."}
-          </p>
+          <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-surface/40 px-4 py-10 text-center">
+            <CheckCircle2 size={22} className="text-accent" />
+            <p className="text-sm font-medium text-ink">
+              {issues.length === 0 ? "Tidak ada masalah DRC/ERC." : "Tidak ada yang cocok dengan saringan."}
+            </p>
+          </div>
         ) : (
-          <ul className="divide-y divide-line" aria-label="Daftar masalah">
+          <ul className="space-y-2" aria-label="Daftar masalah">
             {visible.map((issue) => (
-              <li key={issue.key} className="flex gap-2 px-3 py-2">
+              <li
+                key={issue.key}
+                className={`flex gap-2.5 rounded-xl border bg-surface/50 p-3 ${
+                  issue.severity === "error" ? "border-danger/30" : "border-warn/30"
+                }`}
+              >
                 {issue.severity === "error" ? (
-                  <CircleAlert size={14} className="mt-0.5 shrink-0 text-danger" aria-label="error" />
+                  <CircleAlert size={15} className="mt-0.5 shrink-0 text-danger" aria-label="error" />
                 ) : (
-                  <TriangleAlert size={14} className="mt-0.5 shrink-0 text-warn" aria-label="peringatan" />
+                  <TriangleAlert size={15} className="mt-0.5 shrink-0 text-warn" aria-label="peringatan" />
                 )}
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="break-words text-sm text-ink">{issue.message}</p>
-                  <p className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-                    <span className="rounded bg-raised px-1.5 py-0.5">{CATEGORY_LABELS[issue.category]}</span>
-                    <span className="font-mono">{issue.type}</span>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="break-words text-xs leading-relaxed text-ink">{issue.message}</p>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                    <span className="rounded-md bg-raised px-1.5 py-0.5 font-medium">{CATEGORY_LABELS[issue.category]}</span>
+                    <span className="font-mono text-[10px] opacity-80">{issue.type}</span>
                     {issue.components.map((name) => (
                       <button
                         key={name}
                         type="button"
                         onClick={() => reveal(name)}
                         title={`Loncat ke ${name} di kode`}
-                        className="rounded border border-line px-1.5 py-0.5 font-mono text-ink hover:border-accent hover:text-accent"
+                        className="rounded-md border border-line bg-panel px-1.5 py-0.5 font-mono text-[11px] font-medium text-ink transition hover:border-accent hover:text-accent"
                       >
                         {name}
                       </button>
                     ))}
-                  </p>
+                  </div>
                 </div>
               </li>
             ))}
