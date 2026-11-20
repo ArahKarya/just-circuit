@@ -17,6 +17,7 @@ import {
   PenTool,
   Settings,
   TerminalSquare,
+  Zap,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 // runframe already renders a <Toaster /> from the same react-hot-toast store.
@@ -32,6 +33,7 @@ import { SchematicEditor } from "./components/cad/SchematicEditor"
 import { LoginScreen } from "./components/LoginScreen"
 import { PreviewPane } from "./components/PreviewPane"
 import { ProblemsPanel } from "./components/ProblemsPanel"
+import { SimulationDialog } from "./components/SimulationDialog"
 import { HistoryDialog } from "./components/history/HistoryDialog"
 import { LibraryDialog } from "./components/library/LibraryDialog"
 import { SaveToLibraryDialog } from "./components/library/SaveToLibraryDialog"
@@ -50,6 +52,7 @@ import { useProjects } from "./hooks/useProjects"
 import { useUndoStack } from "./hooks/useUndoStack"
 import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
+import type { SimFinding } from "./lib/circuit-sim"
 import { buildIssues, extractIssues, locateComponent, mergeRunWarnings, type DesignIssue } from "./lib/drc"
 import { notifyChange } from "./lib/live-data"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
@@ -61,7 +64,7 @@ import { buildFixRequest } from "./lib/system-prompt"
 import type { AttachmentRef, ProjectFiles, RunStatus } from "./lib/types"
 
 type LeftTab = "chat" | "code" | "problems"
-type DialogName = "settings" | "projects" | "import" | "parts" | "history" | "library" | null
+type DialogName = "settings" | "projects" | "import" | "parts" | "history" | "library" | "simulation" | null
 type CadMode = "none" | "layout" | "schematic" | "pcb"
 
 const MIN_PANEL_WIDTH = 340
@@ -342,6 +345,16 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
     [askAiWithDraft],
   )
 
+  const askAiToFixSim = useCallback(
+    (findings: SimFinding[]) => {
+      setLeftTab("chat")
+      const lines = findings.map((f) => `${f.title} — ${f.detail}`)
+      const kind = findings.every((f) => f.severity === "warning") ? "warning" : "error"
+      void chat.send(buildFixRequest(lines, kind))
+    },
+    [chat],
+  )
+
   const handleLayoutMove = useCallback(
     (event: ManualEditEvent, snapshot: unknown[]) => {
       let outcome: LayoutMoveOutcome | null = null
@@ -428,6 +441,17 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
 
         {/* Right toolbar */}
         <div className="ml-auto flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label="Simulasi"
+            onClick={() => setDialog("simulation")}
+            disabled={!rendered}
+            title={rendered ? "Simulasi listrik & arus DC (cek korsleting, arus LED, daya resistor)" : "Butuh build yang berhasil"}
+          >
+            <Zap size={14} className="text-warn" />
+            <span className="hidden 2xl:inline">Simulasi</span>
+          </Button>
           <Button
             size="sm"
             variant={cadMode === "schematic" ? "primary" : "ghost"}
@@ -688,6 +712,14 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
       )}
       {libraryPath && <SaveToLibraryDialog project={project} path={libraryPath} onClose={() => setLibraryPath(null)} />}
       {dialog === "history" && <HistoryDialog projectId={project.id} flush={working.flush} onClose={closeDialog} />}
+      {dialog === "simulation" && rendered && (
+        <SimulationDialog
+          circuitJson={rendered.json}
+          onAskAiToFix={askAiToFixSim}
+          canAskAi={!chat.isBusy && !problem}
+          onClose={closeDialog}
+        />
+      )}
       <ImportComponentDialog2
         isOpen={dialog === "import"}
         onClose={closeDialog}
