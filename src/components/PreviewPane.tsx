@@ -20,6 +20,21 @@ function reportPreviewCrash(error: unknown): void {
     .catch(() => undefined)
 }
 
+/**
+ * The 3D viewer spins the board until it is touched, and reads that choice from localStorage when
+ * it mounts. Start it still, unless the user turned auto-rotate on from the viewer's own menu.
+ */
+function disableCadAutoRotate(): void {
+  try {
+    if (window.localStorage.getItem("cadViewerAutoRotateUserToggled") !== "true") {
+      window.localStorage.setItem("cadViewerAutoRotate", "false")
+    }
+  } catch {
+    // Storage blocked (private window): the viewer then falls back to its own default.
+  }
+}
+disableCadAutoRotate()
+
 /** runframe keeps its evaluator worker on globalThis and reuses it across mounts. */
 const runframeGlobal = globalThis as { runFrameWorker?: { kill: () => void } | null }
 
