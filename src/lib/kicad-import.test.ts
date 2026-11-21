@@ -66,4 +66,21 @@ describe("kicad-import hardening", () => {
   it("refuses files over the size limit", () => {
     expect(() => importKicadFiles([{ name: "big.kicad_pcb", content: "x".repeat(MAX_KICAD_FILE_BYTES + 1) }])).toThrow(/terlalu besar/)
   })
+
+  it("preserves netlist <trace> connections and <copperpour> zones", () => {
+    const json = [
+      { type: "pcb_board", width: 30, height: 20 },
+      { type: "source_net", source_net_id: "net1", name: "GND" },
+      { type: "source_component", source_component_id: "s1", name: "R1", ftype: "simple_resistor" },
+      { type: "source_port", source_port_id: "sp1", source_component_id: "s1", name: "pin1" },
+      { type: "pcb_component", pcb_component_id: "p1", source_component_id: "s1", center: { x: 0, y: 0 }, width: 2, height: 1, rotation: 0, layer: "top" },
+      { type: "source_trace", connected_source_port_ids: ["sp1"], connected_source_net_ids: ["net1"] },
+      { type: "pcb_copper_pour", source_net_id: "net1", layer: "bottom" },
+    ]
+    const { tsx, stats } = circuitJsonToTsx(json)
+    expect(stats.netTraces).toBe(1)
+    expect(stats.zones).toBe(1)
+    expect(tsx).toContain('<trace from=".R1 > .pin1" to="net.GND" />')
+    expect(tsx).toContain('<copperpour connectsTo="GND" layer="bottom" useThermalReliefs />')
+  })
 })

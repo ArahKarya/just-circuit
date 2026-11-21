@@ -1,4 +1,4 @@
-import { KicadToCircuitJsonConverter } from "kicad-to-circuit-json"
+import { KicadSymbolToCircuitJsonConverter, KicadToCircuitJsonConverter } from "kicad-to-circuit-json"
 import { extractPcbScene, extractSchematicScene, nextDesignator, type PcbCompView, type SchematicCompView } from "./circuit-extract"
 import { jsxStringValue, roundMm } from "./tsx-ast"
 
@@ -11,6 +11,10 @@ export interface KicadImportNotes {
   skippedSymbols: number
   /** Parts given a new designator because theirs was missing, duplicated or invalid. */
   renamed: { from: string; to: string }[]
+  /** Number of netlist <trace> connections preserved from the KiCad file. */
+  importedNetTraces?: number
+  /** Number of copper pour zones preserved. */
+  importedZones?: number
 }
 
 export interface ImportedKicadProject {
@@ -21,17 +25,37 @@ export interface ImportedKicadProject {
     components: number
     traces: number
     vias: number
+    netTraces?: number
+    zones?: number
   }
   notes: KicadImportNotes
+}
+
+export interface ImportedKicadSymbol {
+  componentName: string
+  filePath: string
+  tsx: string
+  pinCount: number
 }
 
 function sanitizeName(filename: string): string {
   return (
     filename
-      .replace(/\.(kicad_pcb|kicad_sch)$/i, "")
+      .replace(/\.(kicad_pcb|kicad_sch|kicad_sym)$/i, "")
       .replace(/[-_]+/g, " ")
       .trim() || "Proyek KiCad"
   )
+}
+
+function toPascalIdent(raw: string): string {
+  const cleaned = raw
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
+    .join("")
+  if (!cleaned) return "KicadPart"
+  return /^[0-9]/.test(cleaned) ? `Part${cleaned}` : cleaned
 }
 
 function componentJsx(
@@ -39,6 +63,7 @@ function componentJsx(
   opts: {
     ftype?: string
     value?: string
+    footprint?: string
     pcbX?: number
     pcbY?: number
     pcbRotation?: number
@@ -54,24 +79,24 @@ function componentJsx(
   if (opts.ftype === "simple_resistor" || /^R\d+/i.test(name)) {
     tag = "resistor"
     attrs.push(`resistance=${jsxStringValue(opts.value || "10k")}`)
-    attrs.push(`footprint="0603"`)
+    attrs.push(`footprint=${jsxStringValue(opts.footprint || "0603")}`)
   } else if (opts.ftype === "simple_capacitor" || /^C\d+/i.test(name)) {
     tag = "capacitor"
     attrs.push(`capacitance=${jsxStringValue(opts.value || "100nF")}`)
-    attrs.push(`footprint="0603"`)
+    attrs.push(`footprint=${jsxStringValue(opts.footprint || "0603")}`)
   } else if (opts.ftype === "simple_inductor" || /^L\d+/i.test(name)) {
     tag = "inductor"
     attrs.push(`inductance=${jsxStringValue(opts.value || "10uH")}`)
-    attrs.push(`footprint="0805"`)
+    attrs.push(`footprint=${jsxStringValue(opts.footprint || "0805")}`)
   } else if (opts.ftype === "simple_led" || /^LED\d+/i.test(name)) {
     tag = "led"
     attrs.push(`color=${jsxStringValue(opts.value || "red")}`)
-    attrs.push(`footprint="0603"`)
+    attrs.push(`footprint=${jsxStringValue(opts.footprint || "0603")}`)
   } else if (opts.ftype === "simple_diode" || /^D\d+/i.test(name)) {
     tag = "diode"
-    attrs.push(`footprint="sod123"`)
+    attrs.push(`footprint=${jsxStringValue(opts.footprint || "sod123")}`)
   } else {
-    attrs.push(`footprint="soic8"`)
+    attrs.push(`footprint=${jsxStringValue(opts.footprint || "soic8")}`)
     if (opts.value) attrs.push(`manufacturerPartNumber=${jsxStringValue(opts.value)}`)
   }
 
@@ -90,6 +115,7 @@ const DESIGNATOR = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 interface ImportedPart {
   name: string
+  sourceId: string
   pcb?: PcbCompView
   sch?: SchematicCompView
 }
@@ -98,19 +124,17 @@ interface ImportedPart {
 function pairParts(pcbParts: readonly PcbCompView[], schParts: readonly SchematicCompView[]): ImportedPart[] {
   const parts = new Map<string, ImportedPart>()
   const keyOf = (sourceId: string, id: string) => (sourceId ? `src:${sourceId}` : `id:${id}`)
-  for (const pcb of pcbParts) parts.set(keyOf(pcb.sourceId, pcb.id), { name: pcb.name, pcb })
+  for (const pcb of pcbParts) parts.set(keyOf(pcb.sourceId, pcb.id), { name: pcb.name, sourceId: pcb.sourceId, pcb })
   for (const sch of schParts) {
     const key = keyOf(sch.sourceId, sch.id)
     const existing = parts.get(key)
-    parts.set(key, existing ? { ...existing, sch } : { name: sch.name, sch })
+    parts.set(key, existing ? { ...existing, sch } : { name: sch.name, sourceId: sch.sourceId, sch })
   }
   return [...parts.values()]
 }
 
 /** Gives every part a unique, valid designator, keeping the original whenever possible. */
 function assignNames(parts: readonly ImportedPart[]): { parts: ImportedPart[]; renamed: KicadImportNotes["renamed"] } {
-  // First pass: keep every valid designator the first time it appears, so `R1` is never
-  // renamed just because an unannotated `R?` came before it.
   const kept = new Set<number>()
   const used: string[] = []
   parts.forEach((part, index) => {
@@ -131,10 +155,84 @@ function assignNames(parts: readonly ImportedPart[]): { parts: ImportedPart[]; r
   return { parts: named, renamed }
 }
 
+type RawEl = Record<string, unknown> & { type?: string }
+const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined)
+
+/** Extracts `<trace>` statements from `source_trace` elements using the final assigned component names. */
+function extractNetTraces(circuitJson: readonly unknown[], finalNameBySourceId: Map<string, string>): string[] {
+  const elements = circuitJson.filter((e): e is RawEl => Boolean(e) && typeof e === "object")
+  const portSelector = new Map<string, string>()
+  const netById = new Map<string, string>()
+
+  for (const el of elements) {
+    if (el.type === "source_net" && str(el.source_net_id) && str(el.name)) {
+      netById.set(str(el.source_net_id)!, str(el.name)!)
+    } else if (el.type === "source_port" && str(el.source_port_id) && str(el.source_component_id)) {
+      const compName = finalNameBySourceId.get(str(el.source_component_id)!)
+      const portName = str(el.name) ?? (typeof el.pin_number === "number" ? `pin${el.pin_number}` : undefined)
+      if (compName && portName) {
+        portSelector.set(str(el.source_port_id)!, `.${compName} > .${portName}`)
+      }
+    }
+  }
+
+  const seen = new Set<string>()
+  const lines: string[] = []
+  for (const el of elements) {
+    if (el.type !== "source_trace") continue
+    const ports = Array.isArray(el.connected_source_port_ids)
+      ? el.connected_source_port_ids.map((id) => (typeof id === "string" ? portSelector.get(id) : undefined)).filter((s): s is string => Boolean(s))
+      : []
+    const nets = Array.isArray(el.connected_source_net_ids)
+      ? el.connected_source_net_ids
+          .map((id) => (typeof id === "string" ? netById.get(id) : undefined))
+          .filter((n): n is string => Boolean(n && DESIGNATOR.test(n)))
+      : []
+    if (nets.length > 0) {
+      const netSel = `net.${nets[0]}`
+      for (const p of ports) {
+        const key = `${p}->${netSel}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          lines.push(`    <trace from=${jsxStringValue(p)} to=${jsxStringValue(netSel)} />`)
+        }
+      }
+    } else if (ports.length >= 2) {
+      for (let i = 1; i < ports.length; i += 1) {
+        const key = `${ports[0]}->${ports[i]}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          lines.push(`    <trace from=${jsxStringValue(ports[0])} to=${jsxStringValue(ports[i])} />`)
+        }
+      }
+    }
+  }
+  return lines
+}
+
+/** Extracts `<copperpour>` statements from `pcb_copper_pour` elements if present. */
+function extractCopperPourLines(circuitJson: readonly unknown[]): string[] {
+  const elements = circuitJson.filter((e): e is RawEl => Boolean(e) && typeof e === "object")
+  const netById = new Map<string, string>()
+  for (const el of elements) {
+    if (el.type === "source_net" && str(el.source_net_id) && str(el.name)) {
+      netById.set(str(el.source_net_id)!, str(el.name)!)
+    }
+  }
+  const lines: string[] = []
+  for (const el of elements) {
+    if (el.type !== "pcb_copper_pour") continue
+    const net = (str(el.source_net_id) ? netById.get(str(el.source_net_id)!) : undefined) ?? "GND"
+    const layer = str(el.layer) ?? "bottom"
+    lines.push(`    <copperpour connectsTo=${jsxStringValue(net)} layer=${jsxStringValue(layer)} useThermalReliefs />`)
+  }
+  return lines
+}
+
 /** Converts a circuitJson array (e.g. from KiCad) into a clean, editable tscircuit TSX file. */
 export function circuitJsonToTsx(circuitJson: readonly unknown[]): {
   tsx: string
-  stats: { components: number; traces: number; vias: number }
+  stats: { components: number; traces: number; vias: number; netTraces?: number; zones?: number }
   notes: KicadImportNotes
 } {
   const pcb = extractPcbScene(circuitJson)
@@ -142,6 +240,11 @@ export function circuitJsonToTsx(circuitJson: readonly unknown[]): {
   const paired = pairParts(pcb.components, sch.components)
   const realParts = paired.filter((part) => !part.name.startsWith("#"))
   const { parts, renamed } = assignNames(realParts)
+
+  const finalNameBySourceId = new Map<string, string>()
+  for (const p of parts) {
+    if (p.sourceId) finalNameBySourceId.set(p.sourceId, p.name)
+  }
 
   const lines: string[] = parts.map(({ name, pcb: p, sch: s }) =>
     componentJsx(name, {
@@ -156,6 +259,12 @@ export function circuitJsonToTsx(circuitJson: readonly unknown[]): {
       schRotation: s?.rotation,
     }),
   )
+
+  const netTraceLines = extractNetTraces(circuitJson, finalNameBySourceId)
+  lines.push(...netTraceLines)
+
+  const pourLines = extractCopperPourLines(circuitJson)
+  lines.push(...pourLines)
 
   for (const trace of pcb.traces) {
     if (trace.points.length < 2) continue
@@ -180,8 +289,15 @@ export function circuitJsonToTsx(circuitJson: readonly unknown[]): {
       components: parts.length,
       traces: pcb.traces.length,
       vias: pcb.vias.length,
+      ...(netTraceLines.length > 0 ? { netTraces: netTraceLines.length } : {}),
+      ...(pourLines.length > 0 ? { zones: pourLines.length } : {}),
     },
-    notes: { skippedSymbols: paired.length - realParts.length, renamed },
+    notes: {
+      skippedSymbols: paired.length - realParts.length,
+      renamed,
+      importedNetTraces: netTraceLines.length,
+      importedZones: pourLines.length,
+    },
   }
 }
 
@@ -206,14 +322,65 @@ export function importKicadFiles(files: { name: string; content: string }[]): Im
   }
 }
 
-/** Short Indonesian note for the import toast: what was renamed, skipped and not imported. */
+/** Converts a KiCad symbol library (.kicad_sym) into a reusable tscircuit component TSX file. */
+export function importKicadSymbol(filename: string, content: string, customName?: string): ImportedKicadSymbol {
+  if (content.length > MAX_KICAD_FILE_BYTES) throw new Error(`${filename} terlalu besar`)
+  const converter = new KicadSymbolToCircuitJsonConverter()
+  converter.addFile(filename, content)
+  converter.runUntilFinished()
+  const output = converter.getOutput() as RawEl[]
+
+  const compName = toPascalIdent(customName?.trim() || sanitizeName(filename))
+  const pins: { num: number; label: string }[] = []
+  let idx = 1
+  for (const el of output) {
+    if (el.type === "source_port" || el.type === "schematic_port") {
+      const n = typeof el.pin_number === "number" ? el.pin_number : idx
+      const lbl = str(el.display_pin_label) ?? str(el.name) ?? `P${n}`
+      if (!pins.some((p) => p.num === n)) {
+        pins.push({ num: n, label: lbl })
+        idx += 1
+      }
+    }
+  }
+  pins.sort((a, b) => a.num - b.num)
+  const effectivePins = pins.length > 0 ? pins : [{ num: 1, label: "P1" }, { num: 2, label: "P2" }]
+  const pinMapEntries = effectivePins.map((p) => `  pin${p.num}: ${JSON.stringify(p.label)},`).join("\n")
+  const fp = effectivePins.length <= 8 ? "soic8" : effectivePins.length <= 16 ? "soic16" : `qfp${Math.max(32, effectivePins.length)}`
+
+  const tsx = `import type { ChipProps } from "@tscircuit/props"
+
+const pinLabels = {
+${pinMapEntries}
+} as const
+
+export const ${compName} = (props: ChipProps<typeof pinLabels>) => (
+  <chip
+    footprint=${jsxStringValue(fp)}
+    manufacturerPartNumber=${jsxStringValue(compName)}
+    pinLabels={pinLabels}
+    {...props}
+  />
+)
+`
+  return {
+    componentName: compName,
+    filePath: `lib/parts/${compName}.tsx`,
+    tsx,
+    pinCount: effectivePins.length,
+  }
+}
+
+/** Short Indonesian note for the import toast: what was renamed, skipped and imported. */
 export function kicadImportNote(notes: KicadImportNotes): string {
   const parts: string[] = []
+  if (notes.importedNetTraces) parts.push(`${notes.importedNetTraces} koneksi net diimpor`)
+  if (notes.importedZones) parts.push(`${notes.importedZones} copper zone diimpor`)
   if (notes.renamed.length > 0) {
     const sample = notes.renamed.slice(0, 3).map((r) => `${r.from}→${r.to}`).join(", ")
     parts.push(`${notes.renamed.length} part diberi nama baru (${sample}${notes.renamed.length > 3 ? ", …" : ""})`)
   }
   if (notes.skippedSymbols > 0) parts.push(`${notes.skippedSymbols} simbol power/flag dilewati`)
-  parts.push("koneksi net dan footprint asli belum ikut diimpor, periksa ulang sebelum dipakai")
+  if (!notes.importedNetTraces) parts.push("koneksi net & footprint khusus perlu dicek ulang")
   return `. ${parts.join("; ")}.`
 }

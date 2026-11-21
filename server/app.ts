@@ -9,6 +9,7 @@ import type { createAuth } from "./auth/auth.js"
 import { hostGuard } from "./middleware/host-guard.js"
 import { rateLimit } from "./middleware/rate-limit.js"
 import { jlcRouter } from "./routes/jlc.js"
+import { kicadCliRouter } from "./routes/kicad-cli.js"
 import { llmRouter } from "./routes/llm.js"
 import { migrateRouter } from "./routes/migrate.js"
 import { projectsRouter } from "./routes/projects.js"
@@ -89,6 +90,7 @@ export function createApp({ auth, projects, settings, workspaces, preferences, m
   app.get("/api/terminal/status", (_req, res) => {
     res.json({ success: true, data: { enabled: config.enableTerminal } })
   })
+  app.use("/api/kicad-cli", kicadCliRouter())
   app.use("/api/jlc", rateLimit(config.jlcRateLimitPerMinute), jlcRouter())
   app.use("/api", auth.requireCsrfHeader)
   app.use("/api/llm", rateLimit(config.rateLimitPerMinute), express.json({ limit: config.maxBodyBytes }), llmRouter(settings, projects, attachments, bugs))
