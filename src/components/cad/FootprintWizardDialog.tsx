@@ -1,19 +1,35 @@
-import { Cpu, Grid2x2, PackagePlus, Upload } from "lucide-react"
+import { Cpu, Grid2x2, PackagePlus, TriangleAlert, Upload } from "lucide-react"
 import { useMemo, useRef, useState } from "react"
 import toast from "react-hot-toast"
-import { importKicadSymbol } from "../../lib/kicad-import"
-import { addComponentFile, withFiles } from "../../lib/project-ops"
-import { jsxStringValue, roundMm } from "../../lib/tsx-ast"
-import type { Project } from "../../lib/types"
+import {
+  buildFootprintTsx,
+  FAMILY_DEFAULTS,
+  footprintWarnings,
+  generatePads,
+  pin1Marker,
+  safeComponentName,
+  silkscreenRoutes,
+  type FootprintParams,
+  type PackageFamily,
+  type PadSpec,
+} from "../../lib/footprint-wizard"
+import { assertKicadSymbolFile, importKicadSymbol, KICAD_SYMBOL_EXTENSION } from "../../lib/kicad-import"
+import { buildPanelTsx, PANEL_FILE, type PanelSeparation } from "../../lib/panel-wizard"
+import type { Project, ProjectFiles } from "../../lib/types"
+import { planFileWrite, type PlannedWrite } from "../../lib/wizard-write"
 import { Button, Field, Modal, SelectField } from "../ui"
 
 type WizardTab = "footprint" | "symbol" | "panel"
-type PackageFamily = "soic" | "qfn" | "bga" | "pinrow"
 
 interface FootprintWizardDialogProps {
   project: Project
-  onApplyProject: (next: Project, commitMessage: string, openFile?: string) => Promise<void>
+  /** Undo-recording commit of the whole file map; `openFile` is shown in the code tab afterwards. */
+  onCommitFiles: (files: ProjectFiles, openFile?: string) => void
   onClose: () => void
+}
+
+interface PendingWrite extends PlannedWrite {
+  successMessage: string
 }
 
 const FAMILY_OPTIONS: { value: PackageFamily; label: string }[] = [
@@ -23,172 +39,34 @@ const FAMILY_OPTIONS: { value: PackageFamily; label: string }[] = [
   { value: "bga", label: "BGA Matrix (Ball Grid Array)" },
 ]
 
-interface PadPreview {
-  num: number
-  x: number
-  y: number
-  w: number
-  h: number
-  circle?: boolean
+const SEPARATION_OPTIONS: { value: PanelSeparation; label: string }[] = [
+  { value: "mouse-bites", label: "Tab + Mouse-bites" },
+  { value: "v-score", label: "Tab + V-Score" },
+  { value: "outline", label: "Outline routing (tanpa tab)" },
+]
+
+const RAIL_WIDTH_MM = 5
+
+const numberOr = (fallback: number) => (raw: string) => {
+  const value = Number(raw)
+  return Number.isFinite(value) && value >= 0 ? value : fallback
 }
 
-function generatePads(family: PackageFamily, pinCount: number, pitch: number, bodyW: number, padW: number, padH: number): PadPreview[] {
-  const pads: PadPreview[] = []
-  const n = Math.max(2, Math.min(128, pinCount))
-  if (family === "pinrow") {
-    const startX = -((n - 1) * pitch) / 2
-    for (let i = 0; i < n; i += 1) {
-      pads.push({ num: i + 1, x: roundMm(startX + i * pitch), y: 0, w: padW, h: padW, circle: true })
-    }
-  } else if (family === "soic") {
-    const perSide = Math.ceil(n / 2)
-    const startY = ((perSide - 1) * pitch) / 2
-    const xOff = bodyW / 2 + padW / 2
-    for (let i = 0; i < perSide; i += 1) {
-      pads.push({ num: i + 1, x: roundMm(-xOff), y: roundMm(startY - i * pitch), w: padW, h: padH })
-    }
-    for (let i = 0; i < n - perSide; i += 1) {
-      pads.push({ num: perSide + i + 1, x: roundMm(xOff), y: roundMm(-startY + i * pitch), w: padW, h: padH })
-    }
-  } else if (family === "qfn") {
-    const perSide = Math.max(1, Math.floor(n / 4))
-    const span = ((perSide - 1) * pitch) / 2
-    const off = bodyW / 2
-    let p = 1
-    // Left (top->bottom)
-    for (let i = 0; i < perSide; i += 1) pads.push({ num: p++, x: roundMm(-off), y: roundMm(span - i * pitch), w: padW, h: padH })
-    // Bottom (left->right)
-    for (let i = 0; i < perSide; i += 1) pads.push({ num: p++, x: roundMm(-span + i * pitch), y: roundMm(-off), w: padH, h: padW })
-    // Right (bottom->top)
-    for (let i = 0; i < perSide; i += 1) pads.push({ num: p++, x: roundMm(off), y: roundMm(-span + i * pitch), w: padW, h: padH })
-    // Top (right->left)
-    for (let i = 0; i < perSide; i += 1) pads.push({ num: p++, x: roundMm(span - i * pitch), y: roundMm(off), w: padH, h: padW })
-  } else {
-    const side = Math.ceil(Math.sqrt(n))
-    const half = ((side - 1) * pitch) / 2
-    let p = 1
-    for (let r = 0; r < side && p <= n; r += 1) {
-      for (let c = 0; c < side && p <= n; c += 1) {
-        pads.push({ num: p++, x: roundMm(-half + c * pitch), y: roundMm(half - r * pitch), w: padW, h: padW, circle: true })
-      }
-    }
-  }
-  return pads
-}
-
-export function FootprintWizardDialog({ project, onApplyProject, onClose }: FootprintWizardDialogProps) {
+export function FootprintWizardDialog({ project, onCommitFiles, onClose }: FootprintWizardDialogProps) {
   const [tab, setTab] = useState<WizardTab>("footprint")
+  const [pending, setPending] = useState<PendingWrite | null>(null)
 
-  // Footprint wizard state
-  const [compName, setCompName] = useState("CustomIC")
-  const [family, setFamily] = useState<PackageFamily>("soic")
-  const [pinCount, setPinCount] = useState(8)
-  const [pitch, setPitch] = useState(1.27)
-  const [bodyW, setBodyW] = useState(4.0)
-  const [padW, setPadW] = useState(1.5)
-  const [padH, setPadH] = useState(0.6)
-  const [pinNamesCsv, setPinNamesCsv] = useState("VCC, IN1, IN2, GND, OUT1, OUT2, EN, NC")
-  const [cadModelUrl, setCadModelUrl] = useState("")
-
-  // KiCad symbol state
-  const [symCustomName, setSymCustomName] = useState("")
-  const symInputRef = useRef<HTMLInputElement>(null)
-
-  // Panelization state
-  const [panelCols, setPanelCols] = useState(2)
-  const [panelRows, setPanelRows] = useState(2)
-  const [panelSpacing, setPanelSpacing] = useState(2.5)
-  const [panelMethod, setPanelMethod] = useState<"tab-routing" | "v-score">("tab-routing")
-  const [panelRail, setPanelRail] = useState(true)
-
-  const pads = useMemo(() => generatePads(family, pinCount, pitch, bodyW, padW, padH), [family, pinCount, pitch, bodyW, padW, padH])
-
-  const createFootprintComponent = async () => {
-    const safeName = compName.replace(/[^A-Za-z0-9]/g, "") || "CustomPart"
-    const labels = pinNamesCsv
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const pinMap = pads.map((p, i) => `  pin${p.num}: ${JSON.stringify(labels[i] ?? `P${p.num}`)},`).join("\n")
-    const padJsx = pads
-      .map((p) =>
-        p.circle && family === "pinrow"
-          ? `        <platedhole portHints={[${JSON.stringify(`pin${p.num}`)}]} shape="circle" outerDiameter="${p.w}mm" holeDiameter="${roundMm(p.w * 0.55)}mm" pcbX={${p.x}} pcbY={${p.y}} />`
-          : p.circle
-            ? `        <smtpad portHints={[${JSON.stringify(`pin${p.num}`)}]} shape="circle" radius="${roundMm(p.w / 2)}mm" pcbX={${p.x}} pcbY={${p.y}} />`
-            : `        <smtpad portHints={[${JSON.stringify(`pin${p.num}`)}]} shape="rect" width="${p.w}mm" height="${p.h}mm" pcbX={${p.x}} pcbY={${p.y}} />`,
-      )
-      .join("\n")
-    const cadProp = cadModelUrl.trim() ? `\n    cadModel={{ stepUrl: ${jsxStringValue(cadModelUrl.trim())} }}` : ""
-
-    const tsx = `import type { ChipProps } from "@tscircuit/props"
-
-const pinLabels = {
-${pinMap}
-} as const
-
-export const ${safeName} = (props: ChipProps<typeof pinLabels>) => (
-  <chip
-    manufacturerPartNumber=${jsxStringValue(safeName)}
-    pinLabels={pinLabels}${cadProp}
-    footprint={
-      <footprint>
-${padJsx}
-        <silkscreenpath route={[{ x: ${roundMm(-bodyW / 2)}, y: ${roundMm(bodyW / 2)} }, { x: ${roundMm(bodyW / 2)}, y: ${roundMm(bodyW / 2)} }, { x: ${roundMm(bodyW / 2)}, y: ${roundMm(-bodyW / 2)} }, { x: ${roundMm(-bodyW / 2)}, y: ${roundMm(-bodyW / 2)} }, { x: ${roundMm(-bodyW / 2)}, y: ${roundMm(bodyW / 2)} }]} />
-      </footprint>
-    }
-    {...props}
-  />
-)
-`
-    const filePath = `lib/parts/${safeName}.tsx`
-    const added = addComponentFile(project, filePath, tsx)
-    await onApplyProject(added.project, `Buat footprint ${safeName}`, filePath)
-    toast.success(`${safeName} dibuat di ${filePath} (${pads.length} pad)`)
+  const commit = (plan: PlannedWrite, message: string) => {
+    onCommitFiles(plan.files, plan.path)
+    toast.success(message)
     onClose()
   }
 
-  const handleSymbolUpload = async (file: File) => {
-    try {
-      const sym = importKicadSymbol(file.name, await file.text(), symCustomName)
-      const added = addComponentFile(project, sym.filePath, sym.tsx)
-      await onApplyProject(added.project, `Impor simbol KiCad ${sym.componentName}`, sym.filePath)
-      toast.success(`Simbol ${sym.componentName} (${sym.pinCount} pin) ditambahkan ke ${sym.filePath}`)
-      onClose()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Gagal mengimpor .kicad_sym")
-    }
+  /** Writes at once, or asks first when an existing file would be replaced. */
+  const requestWrite = (plan: PlannedWrite, successMessage: string) => {
+    if (plan.overwrites.length > 0) setPending({ ...plan, successMessage })
+    else commit(plan, successMessage)
   }
-
-  const createPanelFile = async () => {
-    const entryImport = `./${project.entrypoint.replace(/\.tsx?$/, "")}`
-    const boards: string[] = []
-    for (let r = 0; r < panelRows; r += 1) {
-      for (let c = 0; c < panelCols; c += 1) {
-        boards.push(`      <MainBoard key="b_${r}_${c}" />`)
-      }
-    }
-    const tsx = `import MainBoard from ${jsxStringValue(entryImport)}
-
-/** Panel produksi ${panelCols}×${panelRows} (${panelMethod}) */
-export default () => (
-  <panel
-    layoutMode="grid"
-    boardGap="${roundMm(panelSpacing)}mm"
-    panelizationMethod=${jsxStringValue(panelMethod)}
-    ${panelRail ? 'edgeRails={{ top: "5mm", bottom: "5mm" }}' : ""}
-  >
-${boards.join("\n")}
-  </panel>
-)
-`
-    const next = withFiles(project, { "panel.circuit.tsx": tsx })
-    await onApplyProject(next, `Buat panel produksi ${panelCols}×${panelRows}`, "panel.circuit.tsx")
-    toast.success(`panel.circuit.tsx (${panelCols}×${panelRows}) berhasil dibuat`)
-    onClose()
-  }
-
-  const extent = Math.max(8, bodyW + padW * 2 + 4, ...pads.map((p) => Math.max(Math.abs(p.x), Math.abs(p.y)) * 2 + 4))
 
   return (
     <Modal
@@ -198,129 +76,282 @@ ${boards.join("\n")}
       onClose={onClose}
     >
       <div className="space-y-4">
-        <div className="flex gap-1 rounded-xl border border-line bg-surface/70 p-1" role="tablist">
-          {([
-            ["footprint", "Footprint Wizard", Cpu],
-            ["symbol", "Impor .kicad_sym", Upload],
-            ["panel", "Panelisasi (<panel>)", Grid2x2],
-          ] as const).map(([id, label, Icon]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                tab === id ? "bg-raised text-ink shadow-xs" : "text-muted hover:text-ink"
-              }`}
-            >
-              <Icon size={13} className={tab === id ? "text-accent" : ""} />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {tab === "footprint" && (
-          <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-            <div className="space-y-3 rounded-xl border border-line bg-surface/40 p-4">
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <Field label="Nama Komponen (TSX)" value={compName} onChange={(e) => setCompName(e.target.value)} />
-                <SelectField label="Tipe Paket" options={FAMILY_OPTIONS} value={family} onChange={(e) => setFamily(e.target.value as PackageFamily)} />
-              </div>
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                <Field label="Jumlah Pin" type="number" min={2} max={128} value={pinCount} onChange={(e) => setPinCount(Number(e.target.value) || 8)} />
-                <Field label="Pitch (mm)" type="number" step="0.05" value={pitch} onChange={(e) => setPitch(Number(e.target.value) || 1.27)} />
-                <Field label="Lebar Body (mm)" type="number" step="0.2" value={bodyW} onChange={(e) => setBodyW(Number(e.target.value) || 4)} />
-                <Field label="Lebar Pad (mm)" type="number" step="0.1" value={padW} onChange={(e) => setPadW(Number(e.target.value) || 1.2)} />
-              </div>
-              <div className="grid gap-2.5 sm:grid-cols-2">
-                <Field label="Tinggi Pad (mm)" type="number" step="0.05" value={padH} onChange={(e) => setPadH(Number(e.target.value) || 0.6)} />
-                <Field label="URL Model 3D STEP/GLB (opsional)" placeholder="https://…/part.step" value={cadModelUrl} onChange={(e) => setCadModelUrl(e.target.value)} />
-              </div>
-              <Field label="Nama Pin (pisahkan koma)" value={pinNamesCsv} onChange={(e) => setPinNamesCsv(e.target.value)} />
-              <Button variant="primary" onClick={() => void createFootprintComponent()}>
-                <PackagePlus size={14} /> Buat Komponen di lib/parts/
-              </Button>
-            </div>
-
-            <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-[#090c10]">
-              <div className="border-b border-line bg-panel px-3 py-1.5 text-[11px] text-muted">
-                Preview Footprint ({pads.length} pad · pitch {pitch}mm)
-              </div>
-              <svg viewBox={`${-extent / 2} ${-extent / 2} ${extent} ${extent}`} className="h-72 w-full">
-                <rect x={-bodyW / 2} y={-bodyW / 2} width={bodyW} height={bodyW} fill="none" stroke="#cbd5e1" strokeWidth={0.12} />
-                <circle cx={-bodyW / 2 + 0.5} cy={-bodyW / 2 + 0.5} r={0.25} fill="#34d399" />
-                {pads.map((p) =>
-                  p.circle ? (
-                    <g key={p.num}>
-                      <circle cx={p.x} cy={-p.y} r={p.w / 2} fill={family === "pinrow" ? "#eab308" : "#ef4444"} />
-                      {family === "pinrow" && <circle cx={p.x} cy={-p.y} r={p.w * 0.27} fill="#090c10" />}
-                    </g>
-                  ) : (
-                    <rect key={p.num} x={p.x - p.w / 2} y={-p.y - p.h / 2} width={p.w} height={p.h} rx={0.08} fill="#ef4444" />
-                  ),
-                )}
-              </svg>
-            </div>
-          </div>
+        <TabBar tab={tab} onChange={setTab} />
+        {pending && (
+          <OverwriteConfirm
+            paths={pending.overwrites}
+            onCancel={() => setPending(null)}
+            onConfirm={() => commit(pending, pending.successMessage)}
+          />
         )}
-
-        {tab === "symbol" && (
-          <div className="space-y-3 rounded-xl border border-line bg-surface/40 p-5">
-            <p className="text-xs leading-relaxed text-muted">
-              Unggah file library simbol KiCad (<code>.kicad_sym</code>) dari situs pabrikan, SnapEDA, atau Ultra Librarian. Just Circuit akan mengekstrak daftar pinnya menggunakan <code>KicadSymbolToCircuitJsonConverter</code> dan membuat komponen siap pakai di <code>lib/parts/</code>.
-            </p>
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="flex-1">
-                <Field label="Nama Komponen (opsional)" placeholder="mis. STM32F103C8" value={symCustomName} onChange={(e) => setSymCustomName(e.target.value)} />
-              </div>
-              <Button variant="primary" onClick={() => symInputRef.current?.click()}>
-                <Upload size={14} /> Unggah .kicad_sym
-              </Button>
-              <input
-                ref={symInputRef}
-                type="file"
-                accept=".kicad_sym"
-                hidden
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  e.target.value = ""
-                  if (file) void handleSymbolUpload(file)
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {tab === "panel" && (
-          <div className="space-y-4 rounded-xl border border-line bg-surface/40 p-5">
-            <p className="text-xs leading-relaxed text-muted">
-              Buat file <code>panel.circuit.tsx</code> yang menggandakan board aktif menjadi panel produksi siap pabrik (V-Score atau Tab-Routing / Mouse-Bites) menggunakan primitif <code>&lt;panel&gt;</code> tscircuit.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <Field label="Kolom" type="number" min={1} max={10} value={panelCols} onChange={(e) => setPanelCols(Number(e.target.value) || 2)} />
-              <Field label="Baris" type="number" min={1} max={10} value={panelRows} onChange={(e) => setPanelRows(Number(e.target.value) || 2)} />
-              <Field label="Jarak antar board (mm)" type="number" step="0.5" value={panelSpacing} onChange={(e) => setPanelSpacing(Number(e.target.value) || 2.5)} />
-              <SelectField
-                label="Metode Pemisahan"
-                options={[
-                  { value: "tab-routing", label: "Tab-Routing (Mouse-bites)" },
-                  { value: "v-score", label: "V-Score" },
-                ]}
-                value={panelMethod}
-                onChange={(e) => setPanelMethod(e.target.value as "tab-routing" | "v-score")}
-              />
-            </div>
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-ink">
-              <input type="checkbox" checked={panelRail} onChange={(e) => setPanelRail(e.target.checked)} className="size-4 accent-emerald-500" />
-              Tambahkan Tooling Rail (5mm atas &amp; bawah untuk mesin SMT pick-and-place)
-            </label>
-            <Button variant="primary" onClick={() => void createPanelFile()}>
-              <Grid2x2 size={14} /> Buat panel.circuit.tsx ({panelCols * panelRows} board)
-            </Button>
-          </div>
-        )}
+        {tab === "footprint" && <FootprintTab project={project} onWrite={requestWrite} />}
+        {tab === "symbol" && <SymbolTab project={project} onWrite={requestWrite} />}
+        {tab === "panel" && <PanelTab project={project} onWrite={requestWrite} />}
       </div>
     </Modal>
+  )
+}
+
+type WriteRequest = (plan: PlannedWrite, successMessage: string) => void
+
+function TabBar({ tab, onChange }: { tab: WizardTab; onChange: (tab: WizardTab) => void }) {
+  return (
+    <div className="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface/70 p-1" role="tablist">
+      {([
+        ["footprint", "Footprint Wizard", Cpu],
+        ["symbol", "Impor .kicad_sym", Upload],
+        ["panel", "Panelisasi (<panel>)", Grid2x2],
+      ] as const).map(([id, label, Icon]) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={tab === id}
+          onClick={() => onChange(id)}
+          className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+            tab === id ? "bg-raised text-ink shadow-xs" : "text-muted hover:text-ink"
+          }`}
+        >
+          <Icon size={13} className={tab === id ? "text-accent" : ""} />
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function OverwriteConfirm({ paths, onCancel, onConfirm }: { paths: readonly string[]; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div role="alertdialog" aria-label="Konfirmasi timpa file" className="space-y-2.5 rounded-xl border border-warn/40 bg-warn/10 p-3.5 text-xs text-ink">
+      <p className="flex items-start gap-2">
+        <TriangleAlert size={15} className="mt-0.5 shrink-0 text-warn" />
+        <span>
+          File berikut sudah ada dan akan ditimpa: <code className="font-mono">{paths.join(", ")}</code>. Perubahan bisa dibatalkan dengan Undo CAD.
+        </span>
+      </p>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" onClick={onCancel}>
+          Batal
+        </Button>
+        <Button size="sm" variant="danger" onClick={onConfirm}>
+          Timpa File
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function InsertImportToggle({ checked, entrypoint, onChange }: { checked: boolean; entrypoint: string; onChange: (value: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-xs text-ink">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-4 accent-emerald-500" />
+      Tambahkan import komponen ke <code className="font-mono">{entrypoint}</code>
+    </label>
+  )
+}
+
+function FootprintTab({ project, onWrite }: { project: Project; onWrite: WriteRequest }) {
+  const [compName, setCompName] = useState("CustomIC")
+  const [params, setParams] = useState<FootprintParams>({ family: "soic", ...FAMILY_DEFAULTS.soic })
+  const [pinNamesCsv, setPinNamesCsv] = useState("VCC, IN1, IN2, GND, OUT1, OUT2, EN, NC")
+  const [cadModelUrl, setCadModelUrl] = useState("")
+  const [insertImport, setInsertImport] = useState(false)
+
+  const pads = useMemo(() => generatePads(params), [params])
+  const warnings = useMemo(() => footprintWarnings(params, pads), [params, pads])
+  const set = <K extends keyof FootprintParams>(key: K, value: FootprintParams[K]) => setParams((prev) => ({ ...prev, [key]: value }))
+  const changeFamily = (family: PackageFamily) => setParams({ family, ...FAMILY_DEFAULTS[family] })
+  const isRowFamily = params.family === "soic" || params.family === "qfn"
+
+  const create = () => {
+    const name = safeComponentName(compName)
+    const pinNames = pinNamesCsv.split(",").map((s) => s.trim()).filter(Boolean)
+    const tsx = buildFootprintTsx({ name, params, pinNames, cadModelUrl })
+    const path = `lib/parts/${name}.tsx`
+    onWrite(planFileWrite(project, path, tsx, insertImport), `${name} dibuat di ${path} (${pads.length} pad). Cocokkan dengan datasheet sebelum produksi.`)
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+      <div className="space-y-3 rounded-xl border border-line bg-surface/40 p-4">
+        <div className="grid gap-2.5 sm:grid-cols-2">
+          <Field label="Nama Komponen (TSX)" value={compName} onChange={(e) => setCompName(e.target.value)} />
+          <SelectField label="Tipe Paket" options={FAMILY_OPTIONS} value={params.family} onChange={(e) => changeFamily(e.target.value as PackageFamily)} />
+        </div>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <Field label="Jumlah Pin" type="number" min={2} max={128} value={params.pinCount} onChange={(e) => set("pinCount", numberOr(8)(e.target.value))} />
+          <Field label="Pitch e (mm)" type="number" step="0.05" value={params.pitch} onChange={(e) => set("pitch", numberOr(1.27)(e.target.value))} />
+          <Field
+            label={params.family === "qfn" ? "Ukuran Body (mm)" : "Lead Span E (mm)"}
+            type="number"
+            step="0.05"
+            disabled={!isRowFamily}
+            value={params.leadSpan}
+            onChange={(e) => set("leadSpan", numberOr(6)(e.target.value))}
+          />
+          <Field label="Lebar Body (mm)" type="number" step="0.1" value={params.bodyWidth} onChange={(e) => set("bodyWidth", numberOr(4)(e.target.value))} />
+        </div>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          <Field
+            label={isRowFamily ? "Panjang Pad (mm)" : "Diameter Pad (mm)"}
+            type="number"
+            step="0.05"
+            value={params.padLength}
+            onChange={(e) => set("padLength", numberOr(1.5)(e.target.value))}
+          />
+          {isRowFamily && (
+            <Field label="Lebar Pad (mm)" type="number" step="0.05" value={params.padWidth} onChange={(e) => set("padWidth", numberOr(0.6)(e.target.value))} />
+          )}
+          {params.family === "qfn" && (
+            <Field
+              label="Exposed Pad (mm, 0 = tanpa)"
+              type="number"
+              step="0.05"
+              value={params.exposedPad}
+              onChange={(e) => set("exposedPad", numberOr(0)(e.target.value))}
+            />
+          )}
+        </div>
+        <Field label="URL Model 3D STEP (opsional)" placeholder="https://…/part.step" value={cadModelUrl} onChange={(e) => setCadModelUrl(e.target.value)} />
+        <Field
+          label="Nama Pin (pisahkan koma)"
+          hint="Nama kosong, ganda atau berkarakter tidak valid otomatis disesuaikan (mis. GND, GND_2)."
+          value={pinNamesCsv}
+          onChange={(e) => setPinNamesCsv(e.target.value)}
+        />
+        <InsertImportToggle checked={insertImport} entrypoint={project.entrypoint} onChange={setInsertImport} />
+        <p className="text-[11px] leading-relaxed text-muted">
+          Hasil wizard adalah titik awal (land pattern kira-kira IPC-7351). Selalu cocokkan ukuran pad dengan land pattern yang disarankan di datasheet.
+        </p>
+        <Button variant="primary" onClick={create}>
+          <PackagePlus size={14} /> Buat Komponen di lib/parts/
+        </Button>
+      </div>
+      <FootprintPreview params={params} pads={pads} warnings={warnings} />
+    </div>
+  )
+}
+
+function FootprintPreview({ params, pads, warnings }: { params: FootprintParams; pads: readonly PadSpec[]; warnings: readonly string[] }) {
+  const marker = pin1Marker(pads)
+  const silk = silkscreenRoutes(params, pads)
+  const extent = Math.max(8, ...pads.map((p) => Math.max(Math.abs(p.x) + p.w, Math.abs(p.y) + p.h) * 2 + 2), ...silk.flat().map((p) => Math.max(Math.abs(p.x), Math.abs(p.y)) * 2 + 2))
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-[#090c10]">
+      <div className="border-b border-line bg-panel px-3 py-1.5 text-[11px] text-muted">
+        Preview Footprint ({pads.length} pad · pitch {params.pitch}mm)
+      </div>
+      <svg viewBox={`${-extent / 2} ${-extent / 2} ${extent} ${extent}`} className="h-72 w-full" role="img" aria-label="Preview footprint">
+        {silk.map((route, i) => (
+          <polyline key={i} points={route.map((p) => `${p.x},${-p.y}`).join(" ")} fill="none" stroke="#cbd5e1" strokeWidth={0.12} />
+        ))}
+        <circle cx={marker.x} cy={-marker.y} r={0.2} fill="#34d399" />
+        {pads.map((p) =>
+          p.shape === "circle" ? (
+            <g key={p.num}>
+              <circle cx={p.x} cy={-p.y} r={p.w / 2} fill={p.plated ? "#eab308" : "#ef4444"} />
+              {p.plated && <circle cx={p.x} cy={-p.y} r={p.w * 0.27} fill="#090c10" />}
+            </g>
+          ) : (
+            <rect key={p.num} x={p.x - p.w / 2} y={-p.y - p.h / 2} width={p.w} height={p.h} rx={0.05} fill="#ef4444" />
+          ),
+        )}
+      </svg>
+      {warnings.length > 0 && (
+        <ul className="space-y-1 border-t border-line bg-warn/10 px-3 py-2 text-[11px] text-warn">
+          {warnings.map((w) => (
+            <li key={w}>{w}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function SymbolTab({ project, onWrite }: { project: Project; onWrite: WriteRequest }) {
+  const [customName, setCustomName] = useState("")
+  const [footprint, setFootprint] = useState("")
+  const [insertImport, setInsertImport] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const upload = async (file: File) => {
+    try {
+      assertKicadSymbolFile(file)
+      const sym = importKicadSymbol(file.name, await file.text(), { customName, footprint })
+      const renamed = sym.renamedPins > 0 ? `, ${sym.renamedPins} nama pin disesuaikan` : ""
+      const noFootprint = footprint.trim() ? "" : ". Footprint belum dipilih: isi di file sesuai datasheet"
+      onWrite(planFileWrite(project, sym.filePath, sym.tsx, insertImport), `Simbol ${sym.componentName} (${sym.pinCount} pin${renamed}) ditambahkan ke ${sym.filePath}${noFootprint}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal mengimpor .kicad_sym")
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-line bg-surface/40 p-5">
+      <p className="text-xs leading-relaxed text-muted">
+        Unggah file library simbol KiCad (<code>.kicad_sym</code>) dari situs pabrikan, SnapEDA, atau Ultra Librarian. Daftar pin diambil dari simbol; footprint
+        tidak ada di file simbol, jadi isi sesuai paket di datasheet (atau biarkan kosong dan tambahkan nanti).
+      </p>
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        <Field label="Nama Komponen (opsional)" placeholder="mis. STM32F103C8" value={customName} onChange={(e) => setCustomName(e.target.value)} />
+        <Field
+          label="Footprint (opsional)"
+          placeholder="mis. lqfp48, soic8, qfn32"
+          hint="String footprint tscircuit. Kosong = chip tanpa footprint PCB."
+          value={footprint}
+          onChange={(e) => setFootprint(e.target.value)}
+        />
+      </div>
+      <InsertImportToggle checked={insertImport} entrypoint={project.entrypoint} onChange={setInsertImport} />
+      <Button variant="primary" onClick={() => inputRef.current?.click()}>
+        <Upload size={14} /> Unggah .kicad_sym
+      </Button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={KICAD_SYMBOL_EXTENSION}
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ""
+          if (file) void upload(file)
+        }}
+      />
+    </div>
+  )
+}
+
+function PanelTab({ project, onWrite }: { project: Project; onWrite: WriteRequest }) {
+  const [cols, setCols] = useState(2)
+  const [rows, setRows] = useState(2)
+  const [boardGap, setBoardGap] = useState(2.5)
+  const [separation, setSeparation] = useState<PanelSeparation>("mouse-bites")
+  const [rails, setRails] = useState(true)
+
+  const create = () => {
+    const tsx = buildPanelTsx({ cols, rows, boardGap, separation, railWidth: rails ? RAIL_WIDTH_MM : 0 }, project.entrypoint)
+    onWrite(planFileWrite(project, PANEL_FILE, tsx), `${PANEL_FILE} (${cols}×${rows}) berhasil dibuat`)
+  }
+
+  return (
+    <div className="space-y-4 rounded-xl border border-line bg-surface/40 p-5">
+      <p className="text-xs leading-relaxed text-muted">
+        Buat file <code>{PANEL_FILE}</code> yang menggandakan board aktif menjadi panel produksi memakai primitif <code>&lt;panel&gt;</code> tscircuit (tab dengan
+        mouse-bites atau V-score, atau outline routing). Cek aturan panel pabrik PCB Anda.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Field label="Kolom" type="number" min={1} max={10} value={cols} onChange={(e) => setCols(numberOr(2)(e.target.value))} />
+        <Field label="Baris" type="number" min={1} max={10} value={rows} onChange={(e) => setRows(numberOr(2)(e.target.value))} />
+        <Field label="Jarak antar board (mm)" type="number" step="0.5" value={boardGap} onChange={(e) => setBoardGap(numberOr(2.5)(e.target.value))} />
+        <SelectField label="Metode Pemisahan" options={SEPARATION_OPTIONS} value={separation} onChange={(e) => setSeparation(e.target.value as PanelSeparation)} />
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-ink">
+        <input type="checkbox" checked={rails} onChange={(e) => setRails(e.target.checked)} className="size-4 accent-emerald-500" />
+        Tambahkan tooling rail {RAIL_WIDTH_MM}mm di atas &amp; bawah (untuk mesin SMT pick-and-place)
+      </label>
+      <Button variant="primary" onClick={create}>
+        <Grid2x2 size={14} /> Buat {PANEL_FILE} ({cols * rows} board)
+      </Button>
+    </div>
   )
 }

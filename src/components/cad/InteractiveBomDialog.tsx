@@ -1,6 +1,8 @@
 import { CheckCircle2, Download } from "lucide-react"
 import { useMemo, useState } from "react"
 import { extractPcbScene } from "../../lib/circuit-extract"
+import { toCsv } from "../../lib/csv"
+import { safeFileSlug } from "../../lib/file-name"
 import { listComponents } from "../../lib/tsx-ast"
 import type { Project } from "../../lib/types"
 import { Button, Modal } from "../ui"
@@ -22,8 +24,7 @@ interface BomGroup {
 }
 
 function downloadCsv(filename: string, rows: string[][]): void {
-  const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n")
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }))
+  const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" }))
   const link = document.createElement("a")
   link.href = url
   link.download = filename
@@ -79,7 +80,7 @@ export function InteractiveBomDialog({ project, circuitJson, onRevealComponent, 
       ["Designator", "Qty", "Type", "Value", "Footprint", "MPN"],
       ...groups.map((g) => [g.refs.join(" "), String(g.refs.length), g.tagName, g.value, g.footprint, g.mpn]),
     ]
-    downloadCsv(`${project.name}-bom.csv`, rows)
+    downloadCsv(`${safeFileSlug(project.name)}-bom.csv`, rows)
   }
 
   const exportCpl = () => {
@@ -87,7 +88,7 @@ export function InteractiveBomDialog({ project, circuitJson, onRevealComponent, 
       ["Designator", "Mid X (mm)", "Mid Y (mm)", "Layer", "Rotation"],
       ...pcb.components.map((c) => [c.name, c.x.toFixed(2), c.y.toFixed(2), c.layer, String(c.rotation)]),
     ]
-    downloadCsv(`${project.name}-cpl.csv`, rows)
+    downloadCsv(`${safeFileSlug(project.name)}-cpl.csv`, rows)
   }
 
   // Fit PCB into SVG viewBox

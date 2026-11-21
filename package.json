@@ -48,6 +48,7 @@
     "@xterm/xterm": "^6.0.0",
     "ai": "^7.0.173",
     "circuit-json": "^0.0.551",
+    "circuit-json-to-gerber": "0.0.122",
     "circuit-json-to-step": "^0.0.63",
     "circuit-to-svg": "^0.0.460",
     "class-variance-authority": "^0.7.1",

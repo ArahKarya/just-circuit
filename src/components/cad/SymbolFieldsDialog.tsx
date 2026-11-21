@@ -1,7 +1,8 @@
 import { Code2, ListOrdered, Save, Search } from "lucide-react"
 import { useMemo, useState } from "react"
 import toast from "react-hot-toast"
-import { autoAnnotateProject, listComponents, patchComponentProps, type PropPatchValue } from "../../lib/tsx-ast"
+import { autoAnnotateProject, describeAnnotateSkips } from "../../lib/tsx-annotate"
+import { listComponents, patchComponentProps, type ComponentSummary, type PropPatchValue } from "../../lib/tsx-ast"
 import type { Project, ProjectFiles } from "../../lib/types"
 import { Button, Modal } from "../ui"
 
@@ -9,6 +10,8 @@ interface SymbolFieldsDialogProps {
   project: Project
   onCommitFiles: (nextFiles: ProjectFiles) => void
   onRevealComponent: (name: string) => void
+  /** Called after Auto-Annotate with old → new designators, so locks/selection can follow. */
+  onRenameComponents?: (renames: Record<string, string>) => void
   onClose: () => void
 }
 
@@ -27,26 +30,42 @@ interface RowDraft {
   layer: string
 }
 
-export function SymbolFieldsDialog({ project, onCommitFiles, onRevealComponent, onClose }: SymbolFieldsDialogProps) {
+/** Drafts are keyed by file and name: the same designator may exist in several files. */
+function rowKey(comp: Pick<ComponentSummary, "path" | "name">): string {
+  return `${comp.path}\u0000${comp.name}`
+}
+
+/** Footprint strings (e.g. "0603", "soic8") never contain whitespace. */
+function isValidFootprint(footprint: string): boolean {
+  return !/\s/.test(footprint.trim())
+}
+
+function rowPatch(comp: ComponentSummary, row: RowDraft): Record<string, PropPatchValue> {
+  const patch: Record<string, PropPatchValue> = {}
+  const valProp = VALUE_PROP[comp.tagName]
+  if (valProp && row.value.trim() !== (comp.value ?? "")) patch[valProp] = row.value.trim() || undefined
+  if (row.footprint.trim() !== (comp.footprint ?? "")) patch.footprint = row.footprint.trim() || undefined
+  if (row.mpn.trim() !== (comp.manufacturerPartNumber ?? "")) patch.manufacturerPartNumber = row.mpn.trim() || undefined
+  if (row.layer !== (comp.layer ?? "top")) patch.layer = row.layer === "top" ? undefined : row.layer
+  return patch
+}
+
+export function SymbolFieldsDialog({ project, onCommitFiles, onRevealComponent, onRenameComponents, onClose }: SymbolFieldsDialogProps) {
   const components = useMemo(() => listComponents(project.files), [project.files])
   const [query, setQuery] = useState("")
   const [bulkFootprint, setBulkFootprint] = useState("")
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({})
 
-  const getDraft = (name: string): RowDraft => {
-    const existing = drafts[name]
-    if (existing) return existing
-    const comp = components.find((c) => c.name === name)
-    return {
-      value: comp?.value ?? "",
-      footprint: comp?.footprint ?? "",
-      mpn: comp?.manufacturerPartNumber ?? "",
-      layer: comp?.layer ?? "top",
+  const getDraft = (comp: ComponentSummary): RowDraft =>
+    drafts[rowKey(comp)] ?? {
+      value: comp.value ?? "",
+      footprint: comp.footprint ?? "",
+      mpn: comp.manufacturerPartNumber ?? "",
+      layer: comp.layer ?? "top",
     }
-  }
 
-  const updateRow = (name: string, patch: Partial<RowDraft>) => {
-    setDrafts((prev) => ({ ...prev, [name]: { ...getDraft(name), ...patch } }))
+  const updateRow = (comp: ComponentSummary, patch: Partial<RowDraft>) => {
+    setDrafts((prev) => ({ ...prev, [rowKey(comp)]: { ...getDraft(comp), ...patch } }))
   }
 
   const visible = useMemo(() => {
@@ -62,36 +81,44 @@ export function SymbolFieldsDialog({ project, onCommitFiles, onRevealComponent, 
   const applyBulkFootprint = () => {
     const fp = bulkFootprint.trim()
     if (!fp || visible.length === 0) return
+    if (!isValidFootprint(fp)) {
+      toast.error(`Footprint "${fp}" tidak valid: tidak boleh ada spasi`)
+      return
+    }
     setDrafts((prev) => {
       const next = { ...prev }
       for (const comp of visible) {
-        next[comp.name] = { ...(prev[comp.name] ?? getDraft(comp.name)), footprint: fp }
+        next[rowKey(comp)] = { ...(prev[rowKey(comp)] ?? getDraft(comp)), footprint: fp }
       }
       return next
     })
     toast.success(`Footprint "${fp}" disiapkan untuk ${visible.length} komponen (klik Simpan)`)
   }
 
+  const invalidFootprints = components.filter((comp) => {
+    const row = drafts[rowKey(comp)]
+    return row !== undefined && !isValidFootprint(row.footprint)
+  })
+
   const saveAll = () => {
+    if (invalidFootprints.length > 0) {
+      toast.error(`Footprint tidak valid (berisi spasi): ${invalidFootprints.map((c) => c.name).join(", ")}`)
+      return
+    }
     let files: ProjectFiles = project.files
     let changed = 0
     const skipped: string[] = []
-    for (const [name, row] of Object.entries(drafts)) {
-      const comp = components.find((c) => c.name === name)
-      if (!comp) continue
-      const patch: Record<string, PropPatchValue> = {}
-      const valProp = VALUE_PROP[comp.tagName]
-      if (valProp && row.value.trim() !== (comp.value ?? "")) patch[valProp] = row.value.trim() || undefined
-      if (row.footprint.trim() !== (comp.footprint ?? "")) patch.footprint = row.footprint.trim() || undefined
-      if (row.mpn.trim() !== (comp.manufacturerPartNumber ?? "")) patch.manufacturerPartNumber = row.mpn.trim() || undefined
-      if (row.layer !== (comp.layer ?? "top")) patch.layer = row.layer === "top" ? undefined : row.layer
+    for (const comp of components) {
+      const row = drafts[rowKey(comp)]
+      if (!row) continue
+      const patch = rowPatch(comp, row)
       if (Object.keys(patch).length === 0) continue
-      const res = patchComponentProps(files, name, patch)
+      const res = patchComponentProps(files, comp.name, patch, { path: comp.path })
       if (res.status === "updated") {
         files = res.files
         changed += 1
       } else if (res.status === "unsupported") {
-        skipped.push(`${name}.${res.prop}`)
+        skipped.push(`${comp.name}.${res.prop}`)
       }
     }
     if (changed > 0) {
@@ -106,12 +133,18 @@ export function SymbolFieldsDialog({ project, onCommitFiles, onRevealComponent, 
   }
 
   const runAutoAnnotate = () => {
+    if (dirtyCount > 0 && !window.confirm(`Ada ${dirtyCount} perubahan yang belum disimpan. Auto-Annotate akan membuangnya. Lanjutkan?`)) {
+      return
+    }
     const res = autoAnnotateProject(project.files)
+    const skipNote = describeAnnotateSkips(res.skipped)
+    if (skipNote) toast(skipNote, { duration: 8000 })
     if (res.renamed.length === 0) {
       toast("Semua designator sudah berurutan (R1..Rn, C1..Cn, …)")
       return
     }
     onCommitFiles(res.files)
+    onRenameComponents?.(res.renames)
     setDrafts({})
     const preview = res.renamed.slice(0, 4).map((r) => `${r.from}→${r.to}`).join(", ")
     toast.success(`${res.renamed.length} designator dirapikan (${preview}${res.renamed.length > 4 ? ", …" : ""})`)
@@ -177,8 +210,9 @@ export function SymbolFieldsDialog({ project, onCommitFiles, onRevealComponent, 
             </thead>
             <tbody className="divide-y divide-line">
               {visible.map((comp) => {
-                const row = getDraft(comp.name)
-                const isDirty = drafts[comp.name] !== undefined
+                const row = getDraft(comp)
+                const isDirty = drafts[rowKey(comp)] !== undefined
+                const footprintInvalid = !isValidFootprint(row.footprint)
                 return (
                   <tr key={`${comp.path}:${comp.name}`} className={isDirty ? "bg-accent/6" : "hover:bg-raised/35"}>
                     <td className="px-3 py-1.5 font-mono font-semibold text-ink">{comp.name}</td>
@@ -186,8 +220,9 @@ export function SymbolFieldsDialog({ project, onCommitFiles, onRevealComponent, 
                     <td className="px-2 py-1.5">
                       {VALUE_PROP[comp.tagName] ? (
                         <input
+                          aria-label={`Nilai ${comp.name}`}
                           value={row.value}
-                          onChange={(e) => updateRow(comp.name, { value: e.target.value })}
+                          onChange={(e) => updateRow(comp, { value: e.target.value })}
                           className="h-7 w-24 rounded border border-line bg-surface px-1.5 font-mono text-xs text-ink focus:border-accent focus:outline-none"
                         />
                       ) : (
@@ -196,15 +231,19 @@ export function SymbolFieldsDialog({ project, onCommitFiles, onRevealComponent, 
                     </td>
                     <td className="px-2 py-1.5">
                       <input
+                        aria-label={`Footprint ${comp.name}`}
                         value={row.footprint}
-                        onChange={(e) => updateRow(comp.name, { footprint: e.target.value })}
-                        className="h-7 w-28 rounded border border-line bg-surface px-1.5 font-mono text-xs text-ink focus:border-accent focus:outline-none"
+                        aria-invalid={footprintInvalid}
+                        title={footprintInvalid ? "Footprint tidak boleh berisi spasi" : undefined}
+                        onChange={(e) => updateRow(comp, { footprint: e.target.value })}
+                        className={`h-7 w-28 rounded border ${footprintInvalid ? "border-danger" : "border-line"} bg-surface px-1.5 font-mono text-xs text-ink focus:border-accent focus:outline-none`}
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <input
+                        aria-label={`MPN ${comp.name}`}
                         value={row.mpn}
-                        onChange={(e) => updateRow(comp.name, { mpn: e.target.value })}
+                        onChange={(e) => updateRow(comp, { mpn: e.target.value })}
                         placeholder="—"
                         className="h-7 w-36 rounded border border-line bg-surface px-1.5 font-mono text-xs text-ink focus:border-accent focus:outline-none"
                       />
@@ -212,7 +251,7 @@ export function SymbolFieldsDialog({ project, onCommitFiles, onRevealComponent, 
                     <td className="px-2 py-1.5">
                       <select
                         value={row.layer}
-                        onChange={(e) => updateRow(comp.name, { layer: e.target.value })}
+                        onChange={(e) => updateRow(comp, { layer: e.target.value })}
                         className="h-7 rounded border border-line bg-surface px-1.5 text-xs text-ink"
                       >
                         <option value="top">Top</option>

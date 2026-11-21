@@ -1,24 +1,18 @@
 import { describe, expect, it } from "vitest"
 import {
-  addCopperPour,
-  addDifferentialPair,
   addPcbTrace,
   addTrace,
   addVia,
-  autoAnnotateProject,
   deleteComponent,
-  deleteElementSpan,
   duplicateComponent,
   findBoardElement,
   inspectComponent,
   insertIntoBoard,
   jsxStringValue,
   listComponents,
-  listCopperPours,
   parseJsxElements,
   patchBoardProps,
   patchComponentProps,
-  readBoardConfig,
   selectorComponent,
 } from "./tsx-ast"
 
@@ -213,59 +207,63 @@ describe("hardening", () => {
   })
 })
 
-describe("KiCad AST extensions", () => {
-  it("reads board stackup config, adds/lists/deletes copper pours and diff pairs", () => {
-    const files: Record<string, string> = {
-      "index.circuit.tsx": `export default () => (\n  <board width="60mm" height="40mm" layers={4} material="flex" fabricatorPreset="jlcpcb_standard">\n    <resistor name="R5" resistance="1k" schX={0} schY={2} />\n    <resistor name="R2" resistance="2k" schX={4} schY={2} />\n    <trace from=".R5 > .pin1" to=".R2 > .pin2" />\n  </board>\n)\n`,
-    }
-    expect(readBoardConfig(files, "index.circuit.tsx")).toMatchObject({
-      width: "60mm",
-      height: "40mm",
-      layers: 4,
-      material: "flex",
-      fabricatorPreset: "jlcpcb_standard",
-    })
-
-    const withPour = addCopperPour(files, "index.circuit.tsx", { net: "GND", layer: "bottom", useThermalReliefs: true })
-    expect(withPour.status).toBe("updated")
-    if (withPour.status !== "updated") return
-    const pours = listCopperPours(withPour.files)
-    expect(pours).toHaveLength(1)
-    expect(pours[0]).toMatchObject({ net: "GND", layer: "bottom", useThermalReliefs: true })
-
-    const removed = deleteElementSpan(withPour.files, pours[0].path, pours[0].start, pours[0].end)
-    expect(removed.status).toBe("updated")
-    if (removed.status !== "updated") return
-    expect(listCopperPours(removed.files)).toHaveLength(0)
-
-    const withDiff = addDifferentialPair(removed.files, "index.circuit.tsx", {
-      name: "USB",
-      positiveConnection: "USB_DP",
-      negativeConnection: "USB_DM",
-      maxLengthSkew: 0.05,
-    })
-    expect(withDiff.status).toBe("updated")
-    if (withDiff.status !== "updated") return
-    expect(withDiff.files["index.circuit.tsx"]).toContain('<differentialpair name="USB"')
-  })
-
-  it("duplicates components and auto-annotates designators with trace selector updates", () => {
+describe("duplicateComponent", () => {
+  const ENTRY = "index.circuit.tsx"
+  it("offsets existing coordinates and keeps the original", () => {
     const files = {
-      "index.circuit.tsx": `export default () => (\n  <board width="30mm" height="20mm">\n    <resistor name="R9" resistance="1k" pcbX={0} pcbY={0} schX={0} schY={2} />\n    <resistor name="R4" resistance="2k" pcbX={5} pcbY={0} schX={4} schY={2} />\n    <trace from=".R9 > .pin1" to=".R4 > .pin2" />\n  </board>\n)\n`,
+      [ENTRY]: `export default () => (\n  <board width="30mm" height="20mm">\n    <resistor name="R9" resistance="1k" pcbX={0} pcbY={0} schX={0} schY={2} />\n  </board>\n)\n`,
     }
     const dup = duplicateComponent(files, "R9", "R10", { pcbDx: 2, pcbDy: 3 })
     expect(dup.status).toBe("updated")
     if (dup.status !== "updated") return
-    expect(dup.files["index.circuit.tsx"]).toContain('name="R10"')
-    expect(dup.files["index.circuit.tsx"]).toContain("pcbX={2}")
+    expect(dup.files[ENTRY]).toContain('<resistor name="R9" resistance="1k" pcbX={0} pcbY={0} schX={0} schY={2} />')
+    expect(dup.files[ENTRY]).toContain('name="R10"')
+    expect(dup.files[ENTRY]).toContain("pcbX={2} pcbY={3}")
+  })
 
-    const annotated = autoAnnotateProject(files)
-    expect(annotated.renamed).toEqual([
-      { from: "R9", to: "R1" },
-      { from: "R4", to: "R2" },
-    ])
-    expect(annotated.files["index.circuit.tsx"]).toContain('name="R1"')
-    expect(annotated.files["index.circuit.tsx"]).toContain('name="R2"')
-    expect(annotated.files["index.circuit.tsx"]).toContain('from=".R1 > .pin1" to=".R2 > .pin2"')
+  it("strips connections so the copy is not shorted to the original's nets", () => {
+    const files = {
+      [ENTRY]: `export default () => (\n  <board>\n    <chip name="U1" footprint="soic8" connections={{ pin1: "net.VCC" }} pcbX={1} pcbY={1} />\n  </board>\n)\n`,
+    }
+    const dup = duplicateComponent(files, "U1", "U2", { pcbDx: 3 })
+    expect(dup.status).toBe("updated")
+    if (dup.status !== "updated") return
+    const copy = inspectComponent(dup.files, "U2")
+    expect(copy?.element.attributes.map((a) => a.name)).not.toContain("connections")
+    expect(inspectComponent(dup.files, "U1")?.element.attributes.map((a) => a.name)).toContain("connections")
+  })
+
+  it("uses the rendered position as base when the code has no coordinates", () => {
+    const files = { [ENTRY]: `export default () => (\n  <board>\n    <resistor name="R1" resistance="1k" />\n  </board>\n)\n` }
+    const dup = duplicateComponent(files, "R1", "R2", { schDx: 2 }, { schX: 4, schY: 1 })
+    expect(dup.status).toBe("updated")
+    if (dup.status !== "updated") return
+    expect(inspectComponent(dup.files, "R2")).toMatchObject({ schX: 6, schY: 1 })
+    expect(inspectComponent(dup.files, "R2")?.pcbX).toBeUndefined()
+  })
+
+  it("applies a default offset when none is given for a coordinate that exists", () => {
+    const files = { [ENTRY]: `export default () => (\n  <board>\n    <resistor name="R1" pcbX={0} pcbY={0} schX={0} schY={0} />\n  </board>\n)\n` }
+    const dup = duplicateComponent(files, "R1", "R2", {})
+    expect(dup.status).toBe("updated")
+    if (dup.status !== "updated") return
+    const copy = inspectComponent(dup.files, "R2")
+    expect(copy?.pcbX).not.toBe(0)
+    expect(copy?.schX).not.toBe(0)
+  })
+})
+
+describe("patchComponentProps with a file path", () => {
+  it("patches the component in the requested file when names repeat", () => {
+    const files = {
+      "a.tsx": `export const A = () => <resistor name="R1" resistance="1k" />`,
+      "b.tsx": `export const B = () => <resistor name="R1" resistance="1k" />`,
+    }
+    const res = patchComponentProps(files, "R1", { resistance: "2k" }, { path: "b.tsx" })
+    expect(res.status).toBe("updated")
+    if (res.status !== "updated") return
+    expect(res.path).toBe("b.tsx")
+    expect(res.files["a.tsx"]).toContain('resistance="1k"')
+    expect(res.files["b.tsx"]).toContain('resistance="2k"')
   })
 })

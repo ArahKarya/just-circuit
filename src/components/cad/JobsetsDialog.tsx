@@ -5,6 +5,9 @@ import toast from "react-hot-toast"
 import { api } from "../../lib/api"
 import { extractPcbScene } from "../../lib/circuit-extract"
 import { simulateCircuit } from "../../lib/circuit-sim"
+import { toCsv } from "../../lib/csv"
+import { safeFileSlug } from "../../lib/file-name"
+import { buildGerberFiles } from "../../lib/gerber-export"
 import type { DesignIssue } from "../../lib/drc"
 import { runExtendedErc } from "../../lib/erc"
 import { useLiveData } from "../../lib/live-data"
@@ -19,12 +22,34 @@ interface JobsetsDialogProps {
   onClose: () => void
 }
 
-function toCsv(rows: string[][]): string {
-  return rows.map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function downloadBlob(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** Adds Gerber + drill files; a failure names the preview export as the fallback. */
+async function addGerbers(zip: JSZip, circuitJson: readonly unknown[]): Promise<void> {
+  try {
+    const files = await buildGerberFiles(circuitJson)
+    for (const [name, content] of Object.entries(files)) zip.file(`manufacturing/gerber/${name}`, content)
+  } catch (err) {
+    throw new Error(
+      `Gerber gagal dibuat (${errorMessage(err)}). Hapus centang Gerber atau pakai menu Export → Fabrication Files di panel preview.`,
+    )
+  }
 }
 
 export function JobsetsDialog({ project, circuitJson, drcIssues, onClose }: JobsetsDialogProps) {
   const kicadCli = useLiveData(() => api.get<{ available: boolean; version: string | null }>("/api/kicad-cli/status"), ["kicad-cli-status"])
+  const [includeGerber, setIncludeGerber] = useState(true)
   const [includeBom, setIncludeBom] = useState(true)
   const [includeCpl, setIncludeCpl] = useState(true)
   const [includeCircuitJson, setIncludeCircuitJson] = useState(true)
@@ -46,7 +71,9 @@ export function JobsetsDialog({ project, circuitJson, drcIssues, onClose }: Jobs
     setBuilding(true)
     try {
       const zip = new JSZip()
-      const slug = project.name.replace(/[^A-Za-z0-9_-]+/g, "-").toLowerCase() || "board"
+      const slug = safeFileSlug(project.name)
+
+      if (includeGerber) await addGerbers(zip, circuitJson)
 
       if (includeBom) {
         const bomRows = [
@@ -97,14 +124,14 @@ export function JobsetsDialog({ project, circuitJson, drcIssues, onClose }: Jobs
         }
       }
 
-      const blob = await zip.generateAsync({ type: "blob" })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `${slug}-production-jobset.zip`
-      link.click()
-      setTimeout(() => URL.revokeObjectURL(url), 1000)
-      toast.success("Paket Jobset produksi berhasil diunduh")
+      if (Object.keys(zip.files).length === 0) {
+        toast.error("Pilih minimal satu file untuk paket Jobset")
+        return
+      }
+      downloadBlob(await zip.generateAsync({ type: "blob" }), `${slug}-jobset.zip`)
+      toast.success(includeGerber ? "Paket Jobset (dengan Gerber & drill) berhasil diunduh" : "Paket Jobset berhasil diunduh (tanpa Gerber)")
+    } catch (err) {
+      toast.error(errorMessage(err) || "Gagal membuat paket Jobset")
     } finally {
       setBuilding(false)
     }
@@ -112,8 +139,8 @@ export function JobsetsDialog({ project, circuitJson, drcIssues, onClose }: Jobs
 
   return (
     <Modal
-      title="Output Jobsets & Paket Produksi (KiCad 9)"
-      subtitle="Verifikasi DRC + ERC + Simulasi Listrik sekaligus dan ekspor paket produksi dalam 1 ZIP"
+      title="Jobset: Gerber, Drill, BOM, CPL & Laporan"
+      subtitle="Verifikasi DRC + ERC + Simulasi Listrik sekaligus, lalu unduh file pabrikasi dalam 1 ZIP"
       wide
       onClose={onClose}
       footer={
@@ -146,14 +173,16 @@ export function JobsetsDialog({ project, circuitJson, drcIssues, onClose }: Jobs
             <PackageCheck size={15} className="text-accent" /> File dalam Paket Jobset
           </h3>
           <div className="grid gap-2 sm:grid-cols-2 text-xs">
+            <CheckRow label="Gerber + Drill Excellon (circuit-json-to-gerber)" checked={includeGerber} onChange={setIncludeGerber} />
             <CheckRow label="BOM CSV (Bill of Materials)" checked={includeBom} onChange={setIncludeBom} />
             <CheckRow label="CPL CSV (Pick & Place / Centroid)" checked={includeCpl} onChange={setIncludeCpl} />
-            <CheckRow label="Circuit JSON (untuk Gerber/KiCad/STEP)" checked={includeCircuitJson} onChange={setIncludeCircuitJson} />
+            <CheckRow label="Circuit JSON (data mentah tscircuit)" checked={includeCircuitJson} onChange={setIncludeCircuitJson} />
             <CheckRow label="Laporan Verifikasi (DRC + ERC + Simulasi)" checked={includeReport} onChange={setIncludeReport} />
             <CheckRow label="Source Code TSX + manual-edits.json" checked={includeSource} onChange={setIncludeSource} />
           </div>
           <p className="text-[11px] text-muted">
-            Catatan: untuk file Gerber/KiCad/STEP langsung, gunakan juga menu <strong>File → Export</strong> pada panel preview RunFrame.
+            Model 3D STEP dan proyek KiCad tidak termasuk di paket ini: unduh lewat menu <strong>Export → STEP</strong> atau{" "}
+            <strong>Export → KiCad Project</strong> di panel preview. Cek Gerber di viewer pabrik PCB sebelum memesan.
           </p>
         </section>
 

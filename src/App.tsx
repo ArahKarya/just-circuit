@@ -363,6 +363,12 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
     })
   }, [])
 
+  /** Auto-annotate renamed components: keep their locks and the selection on the new names. */
+  const remapRenamedComponents = useCallback((renames: Record<string, string>) => {
+    setLockedComponents((prev) => new Set([...prev].map((name) => renames[name] ?? name)))
+    setSelectedComponent((current) => (current ? (renames[current] ?? current) : current))
+  }, [])
+
   // CAD editors build their edit from the files they rendered with. Rebase it onto the latest copy
   // so an edit that lands before the next render cannot drop the one before it.
   const renderedFiles = working.project?.files
@@ -602,7 +608,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
                   className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 outline-none transition hover:bg-raised focus:bg-raised data-[disabled]:pointer-events-none data-[disabled]:opacity-40"
                 >
                   <PackageCheck size={14} className="text-accent" />
-                  <span>Output Jobsets (Paket Produksi)</span>
+                  <span>Jobset: Gerber, BOM & CPL</span>
                 </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
@@ -785,6 +791,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
               lockedComponents={lockedComponents}
               onToggleLock={toggleLock}
               onCommitFiles={commitCadFiles}
+              onRenameComponents={remapRenamedComponents}
               canUndo={undoStack.canUndo}
               canRedo={undoStack.canRedo}
               onUndo={handleCadUndo}
@@ -881,6 +888,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
         <SymbolFieldsDialog
           project={project}
           onCommitFiles={commitCadFiles}
+          onRenameComponents={remapRenamedComponents}
           onRevealComponent={revealComponent}
           onClose={closeDialog}
         />
@@ -896,8 +904,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
       {dialog === "footprint-wizard" && (
         <FootprintWizardDialog
           project={project}
-          onApplyProject={async (next, message, file) => {
-            await working.apply(next, message)
+          onCommitFiles={(files, file) => {
+            commitCadFiles(files)
             if (file) {
               setLeftTab("code")
               setActiveFile(file)

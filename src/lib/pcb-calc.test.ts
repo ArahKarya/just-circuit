@@ -9,7 +9,9 @@ import {
   calcViaCurrent,
   calcVoltageClearanceIpc2221,
   calcVoltageDivider,
+  E96_SERIES,
   nearestE24,
+  nearestInSeries,
 } from "./pcb-calc"
 
 describe("pcb-calc", () => {
@@ -43,12 +45,57 @@ describe("pcb-calc", () => {
     expect(nearestE24(4800)).toBe(4700)
 
     const div = calcVoltageDivider(5, 3.3, 10_000)
+    if (!div.ok) throw new Error(div.error)
     expect(Math.abs(div.actualVout - 3.3)).toBeLessThan(0.15)
 
     const led = calcLedResistor(5, 2.0, 10)
+    if (!led.ok) throw new Error(led.error)
     expect(led.standardOhms).toBe(300)
     expect(led.actualCurrentMa).toBeCloseTo(10, 0)
     expect(led.recommendedPackage).toBe("0402")
+  })
+
+  it("returns null for non-positive resistances instead of a bogus value", () => {
+    expect(nearestE24(0)).toBeNull()
+    expect(nearestE24(-5)).toBeNull()
+    expect(nearestE24(Number.NaN)).toBeNull()
+  })
+
+  it("rejects LED inputs where the supply cannot forward-bias the LED", () => {
+    const res = calcLedResistor(2, 2.0, 10)
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/Vf/)
+    expect(calcLedResistor(5, 2, 0).ok).toBe(false)
+  })
+
+  it("rejects divider targets outside 0 < Vout < Vin", () => {
+    expect(calcVoltageDivider(5, 0, 10_000).ok).toBe(false)
+    expect(calcVoltageDivider(5, 5, 10_000).ok).toBe(false)
+    expect(calcVoltageDivider(5, 6, 10_000).ok).toBe(false)
+    expect(calcVoltageDivider(0, 1, 10_000).ok).toBe(false)
+  })
+
+  it("searches R1/R2 pairs and beats fixing R2 at the nearest value", () => {
+    // 12V -> 3.3V with R2 fixed at 10k gives R1=27k (3.24V, -1.9%).
+    const div = calcVoltageDivider(12, 3.3, 10_000)
+    if (!div.ok) throw new Error(div.error)
+    expect(Math.abs(div.errorPercent)).toBeLessThan(1)
+    expect(div.r2Ohms).toBeGreaterThan(3000)
+    expect(div.r2Ohms).toBeLessThan(33_000)
+  })
+
+  it("supports the E96 series for tighter dividers", () => {
+    expect(E96_SERIES).toHaveLength(96)
+    expect(E96_SERIES).toContain(1.02)
+    expect(E96_SERIES).toContain(4.99)
+    expect(E96_SERIES).toContain(9.76)
+    expect(nearestInSeries(4990, "E96")).toBe(4990)
+    const div = calcVoltageDivider(12, 3.3, 10_000, "E96")
+    if (!div.ok) throw new Error(div.error)
+    expect(div.series).toBe("E96")
+    // E96 is geometric, so pair ratios fall on a ~2.4% grid: worst case is about half a step.
+    expect(Math.abs(div.errorPercent)).toBeLessThan(1.25)
+    expect(E96_SERIES).toContain(div.r1Ohms / 10 ** Math.floor(Math.log10(div.r1Ohms)))
   })
 
   it("returns IPC-2221 voltage clearance and RC filter cutoff", () => {

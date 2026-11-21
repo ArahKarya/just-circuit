@@ -26,7 +26,6 @@ import { classifyCadShortcut } from "../../lib/cad-shortcuts"
 import { extractSchematicScene, nextDesignator, type Point2D, type SchematicCompView, type SchematicPinView } from "../../lib/circuit-extract"
 import {
   addTrace,
-  autoAnnotateProject,
   deleteComponent,
   duplicateComponent,
   inspectComponent,
@@ -37,6 +36,8 @@ import {
   roundMm,
   type PropPatchValue,
 } from "../../lib/tsx-ast"
+import { autoAnnotateProject, describeAnnotateSkips } from "../../lib/tsx-annotate"
+import { addBus } from "../../lib/tsx-rules"
 import type { Project, ProjectFiles } from "../../lib/types"
 import { Button, IconButton } from "../ui"
 import { PropertyInspector } from "./PropertyInspector"
@@ -76,6 +77,8 @@ interface SchematicEditorProps {
   onRedo: () => void
   onRevealCode?: (name: string) => void
   onAskAi?: (componentName: string) => void
+  /** Called after Auto-Annotate with old → new designators, so locks/selection can follow. */
+  onRenameComponents?: (renames: Record<string, string>) => void
   onDone: () => void
 }
 
@@ -96,18 +99,25 @@ export function SchematicEditor({
   onRedo,
   onRevealCode,
   onAskAi,
+  onRenameComponents,
   onDone,
 }: SchematicEditorProps) {
   const scene = useMemo(() => extractSchematicScene(circuitJson), [circuitJson])
   const codeComponents = useMemo(() => listComponents(project.files), [project.files])
 
   const [tool, setTool] = useState<SchTool>("select")
-  const [selectedNames, setSelectedNames] = useState<string[]>(() => (selectedComponent ? [selectedComponent] : []))
+  const [rawSelectedNames, setSelectedNames] = useState<string[]>(() => (selectedComponent ? [selectedComponent] : []))
+  // Undo, AI edits and deletes can remove parts behind our back: only keep names that still exist.
+  const selectedNames = useMemo(() => {
+    const live = new Set(codeComponents.map((c) => c.name))
+    return rawSelectedNames.filter((n) => live.has(n))
+  }, [rawSelectedNames, codeComponents])
   const [placePresetId, setPlacePresetId] = useState(PART_PRESETS[0].id)
   const [netLabelName, setNetLabelName] = useState("VCC")
   const [noteText, setNoteText] = useState("Blok Power 3.3V")
   const [blockTitle, setBlockTitle] = useState("Subcircuit")
   const [busName, setBusName] = useState("SPI_BUS")
+  const [busMembers, setBusMembers] = useState<string[]>([])
   const [wireStart, setWireStart] = useState<SchematicPinView | null>(null)
   const [filterComp, setFilterComp] = useState(true)
   const [cursorWorld, setCursorWorld] = useState<Point2D>({ x: 0, y: 0 })
@@ -120,9 +130,8 @@ export function SchematicEditor({
   const selectedName = selectedNames.length === 1 ? selectedNames[0] : null
 
   useEffect(() => {
-    if (selectedComponent && !selectedNames.includes(selectedComponent)) {
-      setSelectedNames([selectedComponent])
-    }
+    if (!selectedComponent) setSelectedNames([])
+    else if (!selectedNames.includes(selectedComponent)) setSelectedNames([selectedComponent])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedComponent])
 
@@ -192,23 +201,29 @@ export function SchematicEditor({
     (name: string) => {
       const prefix = name.match(/^[A-Za-z]+/)?.[0] ?? "U"
       const nextName = nextDesignator(prefix, codeComponents.map((c) => c.name))
-      const res = duplicateComponent(project.files, name, nextName, { schDx: 2, schDy: 0 })
+      const rendered = scene.components.find((c) => c.name === name)
+      const base = rendered ? { schX: rendered.x, schY: rendered.y } : {}
+      const res = duplicateComponent(project.files, name, nextName, { schDx: 2, schDy: 0 }, base)
       if (res.status === "updated") {
         setPrimarySelection(nextName)
         onCommitFiles(res.files)
         toast.success(`${name} diduplikat menjadi ${nextName}`)
       }
     },
-    [project.files, codeComponents, onCommitFiles, setPrimarySelection],
+    [project.files, codeComponents, scene.components, onCommitFiles, setPrimarySelection],
   )
 
   const runAutoAnnotate = () => {
     const res = autoAnnotateProject(project.files)
+    const skipNote = describeAnnotateSkips(res.skipped)
+    if (skipNote) toast(skipNote, { duration: 8000 })
     if (res.renamed.length === 0) {
       toast("Semua designator sudah berurutan")
       return
     }
     onCommitFiles(res.files)
+    onRenameComponents?.(res.renames)
+    setSelectedNames((prev) => prev.map((n) => res.renames[n] ?? n))
     toast.success(`${res.renamed.length} designator dirapikan`)
   }
 
@@ -331,7 +346,7 @@ export function SchematicEditor({
     if (tool === "subblock") {
       const title = blockTitle.trim() || "Subcircuit"
       const safeName = title.replace(/[^A-Za-z0-9_]/g, "_")
-      const snippet = `<group name=${jsxStringValue(safeName)} showAsSchematicBox schTitle=${jsxStringValue(title)} schX={${sx}} schY={${sy}}>\n  {/* Tambahkan komponen blok ${title} di sini */}\n</group>`
+      const snippet = `<group name=${jsxStringValue(safeName)} showAsSchematicBox schTitle=${jsxStringValue(title)} schX={${sx}} schY={${sy}}>\n  {/* Tambahkan komponen blok di sini */}\n</group>`
       const res = insertIntoBoard(project.files, project.entrypoint, snippet)
       if (res.status === "updated") {
         onCommitFiles(res.files)
@@ -346,16 +361,6 @@ export function SchematicEditor({
       if (res.status === "updated") {
         onCommitFiles(res.files)
         toast.success("Tabel skematik (KiCad 9) ditambahkan")
-      }
-      return
-    }
-
-    if (tool === "bus") {
-      const bname = busName.trim() || "BUS1"
-      const res = insertIntoBoard(project.files, project.entrypoint, `<netalias net=${jsxStringValue(bname)} schX={${sx}} schY={${sy}} />`)
-      if (res.status === "updated") {
-        onCommitFiles(res.files)
-        toast.success(`Net alias / bus "${bname}" ditambahkan`)
       }
       return
     }
@@ -409,6 +414,18 @@ export function SchematicEditor({
     setDrag({ name: comp.name, startWorld: world, origX: comp.x, origY: comp.y, curX: comp.x, curY: comp.y })
   }
 
+  const commitBus = () => {
+    const bname = busName.trim() || "BUS1"
+    const res = addBus(project.files, project.entrypoint, { name: bname, connections: busMembers })
+    if (res.status === "updated") {
+      onCommitFiles(res.files)
+      setBusMembers([])
+      toast.success(`Bus "${bname}" dengan ${busMembers.length} anggota ditambahkan`)
+    } else {
+      toast.error("Tag <board> tidak ditemukan di file utama")
+    }
+  }
+
   const handlePinClick = (event: ReactPointerEvent, pin: SchematicPinView) => {
     event.stopPropagation()
     if (tool === "wire") {
@@ -419,6 +436,10 @@ export function SchematicEditor({
         if (res.status === "updated") onCommitFiles(res.files)
         setWireStart(null)
       }
+      return
+    }
+    if (tool === "bus") {
+      setBusMembers((prev) => (prev.includes(pin.selector) ? prev.filter((s) => s !== pin.selector) : [...prev, pin.selector]))
       return
     }
     if (tool === "netlabel") {
@@ -442,7 +463,7 @@ export function SchematicEditor({
             ["wire", "Kabel (W)", Spline],
             ["place", "Tambah Part (A)", Plus],
             ["netlabel", "Net Label (L)", Tag],
-            ["bus", "Bus / Alias", GitFork],
+            ["bus", "Bus", GitFork],
             ["text", "Catatan (T)", Type],
             ["subblock", "Blok Hierarki", Box],
             ["table", "Tabel Skematik", Table2],
@@ -486,7 +507,17 @@ export function SchematicEditor({
           <input aria-label="Judul blok hierarki" value={blockTitle} onChange={(e) => setBlockTitle(e.target.value)} placeholder="Nama subcircuit" className="h-7 w-28 rounded-md border border-line bg-surface px-2 text-xs text-ink" />
         )}
         {tool === "bus" && (
-          <input aria-label="Nama bus atau alias" value={busName} onChange={(e) => setBusName(e.target.value)} placeholder="SPI_BUS" className="h-7 w-24 rounded-md border border-line bg-surface px-2 font-mono text-xs text-ink" />
+          <>
+            <input aria-label="Nama bus" value={busName} onChange={(e) => setBusName(e.target.value)} placeholder="SPI_BUS" className="h-7 w-24 rounded-md border border-line bg-surface px-2 font-mono text-xs text-ink" />
+            <Button size="sm" disabled={busMembers.length === 0} onClick={commitBus} title={busMembers.join(", ")}>
+              <Check size={13} /> Buat bus ({busMembers.length})
+            </Button>
+            {busMembers.length > 0 && (
+              <Button size="sm" variant="ghost" onClick={() => setBusMembers([])}>
+                Reset
+              </Button>
+            )}
+          </>
         )}
 
         <Button size="sm" variant="ghost" onClick={runAutoAnnotate} title="Urutkan ulang designator R1..Rn, C1..Cn">
@@ -654,8 +685,8 @@ export function SchematicEditor({
                           <circle
                             cx={px}
                             cy={py}
-                            r={tool === "wire" || tool === "netlabel" ? 6 : 4}
-                            fill={isWireOrigin ? "#fbbf24" : "var(--color-surface)"}
+                            r={tool === "wire" || tool === "netlabel" || tool === "bus" ? 6 : 4}
+                            fill={isWireOrigin || busMembers.includes(pin.selector) ? "#fbbf24" : "var(--color-surface)"}
                             stroke={isWireOrigin ? "#fbbf24" : "#38bdf8"}
                             strokeWidth={2}
                           />
@@ -683,7 +714,7 @@ export function SchematicEditor({
                     : tool === "table"
                       ? "Klik untuk menempatkan tabel skematik (<schematictable>)"
                       : tool === "bus"
-                        ? `Klik untuk menempatkan net alias / bus "${busName}"`
+                        ? `Klik pin untuk menambah/menghapus anggota bus "${busName}" (${busMembers.length} dipilih), lalu klik Buat bus`
                         : tool === "netlabel"
                           ? `Klik pin untuk memasang netlabel "${netLabelName}"`
                           : "Seret simbol · Alt+Klik multi-pilih · R putar · W kabel · A tambah part · T catatan · Shift+Seret geser kanvas"}

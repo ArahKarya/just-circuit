@@ -33,8 +33,6 @@ import { extractPcbScene, nextDesignator, type PcbCompView, type Point2D } from 
 import { simulateCircuit } from "../../lib/circuit-sim"
 import { calcTraceMaxCurrent } from "../../lib/pcb-calc"
 import {
-  addCopperPour,
-  addDifferentialPair,
   addPcbTrace,
   addVia,
   deleteComponent,
@@ -44,7 +42,6 @@ import {
   insertIntoBoard,
   jsxStringValue,
   listComponents,
-  listCopperPours,
   listManualPcbTraces,
   listManualVias,
   patchBoardProps,
@@ -53,6 +50,7 @@ import {
   type PcbRoutePoint,
   type PropPatchValue,
 } from "../../lib/tsx-ast"
+import { addCopperPour, addDifferentialPair, listCopperPours } from "../../lib/tsx-rules"
 import type { Project, ProjectFiles } from "../../lib/types"
 import { Button, IconButton } from "../ui"
 import { PropertyInspector } from "./PropertyInspector"
@@ -166,7 +164,12 @@ export function PcbCadEditor({
   const [dpSkew, setDpSkew] = useState(0.05)
 
   // Selection (single + multi + manual trace/via + highlighted net)
-  const [selectedNames, setSelectedNames] = useState<string[]>(() => (selectedComponent ? [selectedComponent] : []))
+  const [rawSelectedNames, setSelectedNames] = useState<string[]>(() => (selectedComponent ? [selectedComponent] : []))
+  // Undo, AI edits and deletes can remove parts behind our back: only keep names that still exist.
+  const selectedNames = useMemo(() => {
+    const live = new Set(codeComponents.map((c) => c.name))
+    return rawSelectedNames.filter((n) => live.has(n))
+  }, [rawSelectedNames, codeComponents])
   const [selectedTraceIdx, setSelectedTraceIdx] = useState<number | null>(null)
   const [selectedViaIdx, setSelectedViaIdx] = useState<number | null>(null)
   const [highlightedNet, setHighlightedNet] = useState<string | null>(null)
@@ -174,9 +177,8 @@ export function PcbCadEditor({
   const selectedName = selectedNames.length === 1 ? selectedNames[0] : null
 
   useEffect(() => {
-    if (selectedComponent && !selectedNames.includes(selectedComponent)) {
-      setSelectedNames([selectedComponent])
-    }
+    if (!selectedComponent) setSelectedNames([])
+    else if (!selectedNames.includes(selectedComponent)) setSelectedNames([selectedComponent])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedComponent])
 
@@ -287,14 +289,16 @@ export function PcbCadEditor({
     (name: string) => {
       const prefix = name.match(/^[A-Za-z]+/)?.[0] ?? "U"
       const nextName = nextDesignator(prefix, codeComponents.map((c) => c.name))
-      const res = duplicateComponent(project.files, name, nextName, { pcbDx: 3, pcbDy: 0 })
+      const rendered = scene.components.find((c) => c.name === name)
+      const base = rendered ? { pcbX: rendered.x, pcbY: rendered.y } : {}
+      const res = duplicateComponent(project.files, name, nextName, { pcbDx: 3, pcbDy: 0 }, base)
       if (res.status === "updated") {
         setPrimarySelection(nextName)
         onCommitFiles(res.files)
         toast.success(`${name} diduplikat menjadi ${nextName}`)
       }
     },
-    [project.files, codeComponents, onCommitFiles, setPrimarySelection],
+    [project.files, codeComponents, scene.components, onCommitFiles, setPrimarySelection],
   )
 
   const alignSelected = useCallback(
@@ -528,7 +532,7 @@ export function PcbCadEditor({
 
     if (tool === "testpoint") {
       const name = nextDesignator("TP", codeComponents.map((c) => c.name))
-      const res = insertIntoBoard(project.files, project.entrypoint, `<testpoint name=${jsxStringValue(name)} padVariant="pad" footprintVariant="pad" padDiameter="1.2mm" pcbX={${snapped.x}} pcbY={${snapped.y}} />`)
+      const res = insertIntoBoard(project.files, project.entrypoint, `<testpoint name=${jsxStringValue(name)} footprintVariant="pad" padDiameter="1.2mm" pcbX={${snapped.x}} pcbY={${snapped.y}} />`)
       if (res.status === "updated") onCommitFiles(res.files)
       return
     }
@@ -903,7 +907,7 @@ export function PcbCadEditor({
       {showZones && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface/90 px-3 py-2 text-xs">
           <span className="font-semibold text-ink">Copper Pour / Zone Manager:</span>
-          <input value={zoneNet} onChange={(e) => setZoneNet(e.target.value)} placeholder="GND" className="h-7 w-24 rounded border border-line bg-panel px-2 font-mono text-xs text-ink" />
+          <input value={zoneNet} onChange={(e) => setZoneNet(e.target.value)} placeholder="GND" title="Nama net (ditulis sebagai net.GND) atau selector" className="h-7 w-24 rounded border border-line bg-panel px-2 font-mono text-xs text-ink" />
           <select value={zoneLayer} onChange={(e) => setZoneLayer(e.target.value as CopperLayer)} className="h-7 rounded border border-line bg-panel px-2 text-xs text-ink">
             <option value="bottom">Bottom (B.Cu)</option>
             <option value="top">Top (F.Cu)</option>
@@ -935,8 +939,8 @@ export function PcbCadEditor({
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface/90 px-3 py-2 text-xs">
           <span className="font-semibold text-ink">Differential Pair:</span>
           <input value={dpName} onChange={(e) => setDpName(e.target.value)} placeholder="Nama (USB)" className="h-7 w-24 rounded border border-line bg-panel px-2 font-mono text-xs text-ink" />
-          <input value={dpPos} onChange={(e) => setDpPos(e.target.value)} placeholder="Trace + (USB_DP)" className="h-7 w-28 rounded border border-line bg-panel px-2 font-mono text-xs text-ink" />
-          <input value={dpNeg} onChange={(e) => setDpNeg(e.target.value)} placeholder="Trace - (USB_DM)" className="h-7 w-28 rounded border border-line bg-panel px-2 font-mono text-xs text-ink" />
+          <input value={dpPos} onChange={(e) => setDpPos(e.target.value)} placeholder="Trace + (USB_DP)" title="Nama <trace> atau selector pin, mis. .J1 > .DP" className="h-7 w-28 rounded border border-line bg-panel px-2 font-mono text-xs text-ink" />
+          <input value={dpNeg} onChange={(e) => setDpNeg(e.target.value)} placeholder="Trace - (USB_DM)" title="Nama <trace> atau selector pin, mis. .J1 > .DM" className="h-7 w-28 rounded border border-line bg-panel px-2 font-mono text-xs text-ink" />
           <label className="flex items-center gap-1 text-muted">
             Skew maks
             <input type="number" step="0.01" value={dpSkew} onChange={(e) => setDpSkew(Number(e.target.value) || 0.05)} className="h-7 w-16 rounded border border-line bg-panel px-1.5 font-mono text-xs text-ink" />

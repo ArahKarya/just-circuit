@@ -408,10 +408,11 @@ export function listComponents(files: ProjectFiles): ComponentSummary[] {
   return list
 }
 
-/** Finds a single component by its `name` prop across TSX/JSX files. */
-export function inspectComponent(files: ProjectFiles, name: string): ComponentSummary | null {
+/** Finds a single component by its `name` prop across TSX/JSX files (or only in `onlyPath`). */
+export function inspectComponent(files: ProjectFiles, name: string, onlyPath?: string): ComponentSummary | null {
   for (const [path, source] of Object.entries(files)) {
     if (!/\.(tsx|jsx)$/.test(path)) continue
+    if (onlyPath !== undefined && path !== onlyPath) continue
     for (const el of parseJsxElements(source)) {
       if (getStringAttr(el, "name") === name) {
         return summarize(path, el) ?? { path, tagName: el.tagName, name, element: el }
@@ -475,14 +476,20 @@ export function patchElementProps(
   return { status: "updated", source: next }
 }
 
+export interface ComponentPatchOptions {
+  force?: boolean
+  /** Restricts the lookup to one file, for projects that reuse a designator across files. */
+  path?: string
+}
+
 /** Patches props on a named component anywhere in the project. */
 export function patchComponentProps(
   files: ProjectFiles,
   name: string,
   patch: Record<string, PropPatchValue>,
-  options?: { force?: boolean },
+  options?: ComponentPatchOptions,
 ): PatchResult {
-  const found = inspectComponent(files, name)
+  const found = inspectComponent(files, name, options?.path)
   if (!found) return { status: "not-found" }
   const result = patchElementProps(files[found.path], found.element, patch, options)
   if (result.status === "unsupported") return { status: "unsupported", path: found.path, prop: result.prop }
@@ -670,89 +677,6 @@ export function addVia(
   return insertIntoBoard(files, entrypoint, `<via ${attrs.join(" ")} />`)
 }
 
-export interface BoardConfig {
-  width: string
-  height: string
-  layers: number
-  material: string
-  thickness: string
-  borderRadius: string
-  fabricatorPreset: string
-  defaultViaTenting: string
-  allowBlindAndBuriedVias: boolean
-  title: string
-}
-
-/** Reads board stackup & manufacturing properties from the root `<board>` element. */
-export function readBoardConfig(files: ProjectFiles, entrypoint: string): BoardConfig {
-  const board = findBoardElement(files, entrypoint)
-  const strProp = (p: string, fallback = "") => (board ? (getStringAttr(board, p) ?? fallback) : fallback)
-  const numProp = (p: string, fallback: number) => {
-    if (!board) return fallback
-    const v = getNumericAttr(board, p)
-    return v.kind === "number" ? v.value : fallback
-  }
-  const boolProp = (p: string) => {
-    if (!board) return false
-    const attr = getAttr(board, p)
-    return attr?.parsed.kind === "boolean" ? attr.parsed.value : false
-  }
-  return {
-    width: strProp("width", "30mm"),
-    height: strProp("height", "20mm"),
-    layers: numProp("layers", 2),
-    material: strProp("material", "fr4"),
-    thickness: strProp("thickness", "1.6mm"),
-    borderRadius: strProp("borderRadius", ""),
-    fabricatorPreset: strProp("fabricatorPreset", ""),
-    defaultViaTenting: strProp("defaultViaTenting", ""),
-    allowBlindAndBuriedVias: boolProp("allowBlindAndBuriedVias"),
-    title: strProp("title", ""),
-  }
-}
-
-export interface CopperPourEntry {
-  path: string
-  start: number
-  end: number
-  net: string
-  layer: string
-  useThermalReliefs: boolean
-}
-
-/** Lists all `<copperpour />` elements across project TSX files. */
-export function listCopperPours(files: ProjectFiles): CopperPourEntry[] {
-  const pours: CopperPourEntry[] = []
-  for (const [path, source] of Object.entries(files)) {
-    if (!/\.(tsx|jsx)$/.test(path)) continue
-    for (const el of parseJsxElements(source)) {
-      if (el.tagName !== "copperpour") continue
-      const thermalAttr = getAttr(el, "useThermalReliefs")
-      pours.push({
-        path,
-        start: el.start,
-        end: el.end,
-        net: getStringAttr(el, "connectsTo") ?? getStringAttr(el, "net") ?? "GND",
-        layer: getStringAttr(el, "layer") ?? "bottom",
-        useThermalReliefs: thermalAttr?.parsed.kind === "boolean" ? thermalAttr.parsed.value : true,
-      })
-    }
-  }
-  return pours
-}
-
-/** Inserts a `<copperpour />` plane into `<board>`. */
-export function addCopperPour(
-  files: ProjectFiles,
-  entrypoint: string,
-  options: { net: string; layer: string; useThermalReliefs?: boolean; clearance?: string },
-): PatchResult {
-  const attrs = [`connectsTo=${jsxStringValue(options.net)}`, `layer=${jsxStringValue(options.layer)}`]
-  if (options.useThermalReliefs !== false) attrs.push("useThermalReliefs")
-  if (options.clearance?.trim()) attrs.push(`clearance=${jsxStringValue(options.clearance.trim())}`)
-  return insertIntoBoard(files, entrypoint, `<copperpour ${attrs.join(" ")} />`)
-}
-
 /** Lists manual `<pcbtrace />` elements with their source spans so they can be edited or deleted. */
 export function listManualPcbTraces(files: ProjectFiles): { path: string; start: number; end: number; net?: string; raw: string }[] {
   const out: { path: string; start: number; end: number; net?: string; raw: string }[] = []
@@ -792,51 +716,58 @@ export function deleteElementSpan(files: ProjectFiles, path: string, start: numb
   return { status: "updated", files: { ...files, [path]: removeElementSpan(source, match) }, path }
 }
 
-/** Inserts a `<differentialpair />` high-speed skew constraint into `<board>`. */
-export function addDifferentialPair(
-  files: ProjectFiles,
-  entrypoint: string,
-  options: { name: string; positiveConnection: string; negativeConnection: string; maxLengthSkew?: number },
-): PatchResult {
-  const attrs = [
-    `name=${jsxStringValue(options.name)}`,
-    `positiveConnection=${jsxStringValue(options.positiveConnection)}`,
-    `negativeConnection=${jsxStringValue(options.negativeConnection)}`,
-  ]
-  if (options.maxLengthSkew !== undefined) attrs.push(`maxLengthSkew={${roundMm(options.maxLengthSkew)}}`)
-  return insertIntoBoard(files, entrypoint, `<differentialpair ${attrs.join(" ")} />`)
+export interface DuplicateOffset {
+  pcbDx?: number
+  pcbDy?: number
+  schDx?: number
+  schDy?: number
 }
 
-/** Inserts a `<net />` declaration (net class / routing rule) into `<board>`. */
-export function addNetRule(
-  files: ProjectFiles,
-  entrypoint: string,
-  options: { name: string; traceWidth?: string; clearance?: string },
-): PatchResult {
-  const attrs = [`name=${jsxStringValue(options.name)}`]
-  if (options.traceWidth?.trim()) attrs.push(`traceWidth=${jsxStringValue(options.traceWidth.trim())}`)
-  if (options.clearance?.trim()) attrs.push(`clearance=${jsxStringValue(options.clearance.trim())}`)
-  return insertIntoBoard(files, entrypoint, `<net ${attrs.join(" ")} />`)
+/** Rendered position of the original, used when its code has no literal coordinates. */
+export interface DuplicateBase {
+  pcbX?: number
+  pcbY?: number
+  schX?: number
+  schY?: number
 }
 
-/** Inserts a custom `<drccheck />` into `<board>`. */
-export function addDrcCheck(
-  files: ProjectFiles,
-  entrypoint: string,
-  options: { name: string; minTraceWidth?: string; minClearance?: string },
-): PatchResult {
-  const attrs = [`name=${jsxStringValue(options.name)}`]
-  if (options.minTraceWidth?.trim()) attrs.push(`minTraceWidth=${jsxStringValue(options.minTraceWidth.trim())}`)
-  if (options.minClearance?.trim()) attrs.push(`minClearance=${jsxStringValue(options.minClearance.trim())}`)
-  return insertIntoBoard(files, entrypoint, `<drccheck ${attrs.join(" ")} />`)
+const DEFAULT_DUPLICATE_OFFSET: Required<DuplicateOffset> = { pcbDx: 3, pcbDy: 0, schDx: 2, schDy: 0 }
+
+/**
+ * New coordinates for one view (pcb or sch). A view with no code coordinates and no rendered
+ * base is left to auto-layout instead of being pinned to an arbitrary spot.
+ */
+function offsetPosition(
+  code: { x?: number; y?: number },
+  base: { x?: number; y?: number },
+  delta: { dx: number; dy: number },
+): { x: number; y: number } | null {
+  const x = code.x ?? base.x
+  const y = code.y ?? base.y
+  if (x === undefined && y === undefined) return null
+  return { x: roundMm((x ?? 0) + delta.dx), y: roundMm((y ?? 0) + delta.dy) }
 }
 
-/** Duplicates a named component with a new designator and coordinate offset. */
+function duplicatePatch(found: ComponentSummary, newName: string, offset: DuplicateOffset, base: DuplicateBase): Record<string, PropPatchValue> {
+  const d = { ...DEFAULT_DUPLICATE_OFFSET, ...offset }
+  const pcb = offsetPosition({ x: found.pcbX, y: found.pcbY }, { x: base.pcbX, y: base.pcbY }, { dx: d.pcbDx, dy: d.pcbDy })
+  const sch = offsetPosition({ x: found.schX, y: found.schY }, { x: base.schX, y: base.schY }, { dx: d.schDx, dy: d.schDy })
+  // The copy must not inherit the original's net connections, or it would be shorted to them.
+  return {
+    name: newName,
+    connections: undefined,
+    ...(pcb ? { pcbX: pcb.x, pcbY: pcb.y } : {}),
+    ...(sch ? { schX: sch.x, schY: sch.y } : {}),
+  }
+}
+
+/** Duplicates a named component with a new designator, a coordinate offset and no connections. */
 export function duplicateComponent(
   files: ProjectFiles,
   name: string,
   newName: string,
-  offset: { pcbDx?: number; pcbDy?: number; schDx?: number; schDy?: number },
+  offset: DuplicateOffset,
+  base: DuplicateBase = {},
 ): PatchResult {
   const found = inspectComponent(files, name)
   if (!found) return { status: "not-found" }
@@ -844,12 +775,7 @@ export function duplicateComponent(
   const rawEl = source.slice(found.element.start, found.element.end)
   const parsed = parseJsxElements(rawEl)[0]
   if (!parsed) return { status: "not-found" }
-  const patch: Record<string, PropPatchValue> = { name: newName }
-  if (found.pcbX !== undefined && offset.pcbDx !== undefined) patch.pcbX = found.pcbX + offset.pcbDx
-  if (found.pcbY !== undefined && offset.pcbDy !== undefined) patch.pcbY = found.pcbY + offset.pcbDy
-  if (found.schX !== undefined && offset.schDx !== undefined) patch.schX = found.schX + offset.schDx
-  if (found.schY !== undefined && offset.schDy !== undefined) patch.schY = found.schY + offset.schDy
-  const patched = patchElementProps(rawEl, parsed, patch, { force: true })
+  const patched = patchElementProps(rawEl, parsed, duplicatePatch(found, newName, offset, base), { force: true })
   if (patched.status !== "updated") return { status: "not-found" }
 
   const lineStart = source.lastIndexOf("\n", found.element.start) + 1
@@ -857,79 +783,4 @@ export function duplicateComponent(
   const insertAt = found.element.end
   const next = `${source.slice(0, insertAt)}\n${indent}${patched.source}${source.slice(insertAt)}`
   return { status: "updated", files: { ...files, [found.path]: next }, path: found.path }
-}
-
-/** Auto-annotates component designators (R1..Rn, C1..Cn, U1..Un) ordered left-to-right, updating trace selectors. */
-export function autoAnnotateProject(files: ProjectFiles): { files: ProjectFiles; renamed: { from: string; to: string }[] } {
-  const comps = listComponents(files)
-  const groups = new Map<string, ComponentSummary[]>()
-  for (const comp of comps) {
-    const match = comp.name.match(/^([A-Za-z]+)\d+$/)
-    if (!match) continue
-    const prefix = match[1].toUpperCase()
-    if (!groups.has(prefix)) groups.set(prefix, [])
-    groups.get(prefix)!.push(comp)
-  }
-
-  const renameMap = new Map<string, string>()
-  const renamed: { from: string; to: string }[] = []
-
-  for (const [prefix, list] of groups.entries()) {
-    const sorted = [...list].sort((a, b) => {
-      const ay = a.schY ?? a.pcbY ?? 0
-      const by = b.schY ?? b.pcbY ?? 0
-      if (Math.abs(ay - by) > 0.5) return by - ay // top-to-bottom
-      const ax = a.schX ?? a.pcbX ?? 0
-      const bx = b.schX ?? b.pcbX ?? 0
-      return ax - bx // left-to-right
-    })
-    sorted.forEach((comp, idx) => {
-      const target = `${prefix}${idx + 1}`
-      if (comp.name !== target) {
-        renameMap.set(comp.name, target)
-        renamed.push({ from: comp.name, to: target })
-      }
-    })
-  }
-
-  if (renameMap.size === 0) return { files, renamed: [] }
-
-  const nextFiles: Record<string, string> = { ...files }
-  for (const [path, source] of Object.entries(nextFiles)) {
-    if (!/\.(tsx|jsx)$/.test(path)) continue
-    const elements = parseJsxElements(source)
-    const edits: { start: number; end: number; text: string }[] = []
-
-    for (const el of elements) {
-      const nameAttr = getAttr(el, "name")
-      const curName = getStringAttr(el, "name")
-      if (nameAttr && curName && renameMap.has(curName) && el.tagName !== "board" && el.tagName !== "group") {
-        edits.push({ start: nameAttr.start, end: nameAttr.end, text: `name=${jsxStringValue(renameMap.get(curName)!)}` })
-      }
-      const connAttrs = CONNECTION_ATTRS[el.tagName]
-      if (connAttrs) {
-        for (const attrName of connAttrs) {
-          const attr = getAttr(el, attrName)
-          const rawSel = getStringAttr(el, attrName)
-          const comp = selectorComponent(rawSel)
-          if (attr && rawSel && comp && renameMap.has(comp)) {
-            const nextName = renameMap.get(comp)!
-            const updatedSel = rawSel.replace(new RegExp(`(^\\.?)${comp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=[\\s>.]|$)`), `$1${nextName}`)
-            edits.push({ start: attr.start, end: attr.end, text: `${attrName}=${jsxStringValue(updatedSel)}` })
-          }
-        }
-      }
-    }
-
-    if (edits.length > 0) {
-      edits.sort((a, b) => b.start - a.start)
-      let updated = source
-      for (const edit of edits) {
-        updated = `${updated.slice(0, edit.start)}${edit.text}${updated.slice(edit.end)}`
-      }
-      nextFiles[path] = updated
-    }
-  }
-
-  return { files: nextFiles, renamed }
 }
