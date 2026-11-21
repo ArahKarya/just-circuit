@@ -1,37 +1,48 @@
 import {
+  AlignHorizontalJustifyStart,
+  AlignVerticalJustifyStart,
+  Box,
   Check,
+  Copy,
+  GitFork,
+  ListOrdered,
   Maximize2,
   MousePointer2,
   Plus,
   Redo2,
   RotateCw,
   Spline,
+  Table2,
   Tag,
   Trash2,
+  Type,
   Undo2,
   ZoomIn,
   ZoomOut,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react"
+import toast from "react-hot-toast"
+import { classifyCadShortcut } from "../../lib/cad-shortcuts"
 import { extractSchematicScene, nextDesignator, type Point2D, type SchematicCompView, type SchematicPinView } from "../../lib/circuit-extract"
 import {
   addTrace,
+  autoAnnotateProject,
   deleteComponent,
+  duplicateComponent,
   inspectComponent,
   insertIntoBoard,
+  jsxStringValue,
   listComponents,
   patchComponentProps,
   roundMm,
-  jsxStringValue,
   type PropPatchValue,
 } from "../../lib/tsx-ast"
-import { classifyCadShortcut } from "../../lib/cad-shortcuts"
-import { reportPatchFailure } from "./patch-feedback"
 import type { Project, ProjectFiles } from "../../lib/types"
 import { Button, IconButton } from "../ui"
 import { PropertyInspector } from "./PropertyInspector"
+import { reportPatchFailure } from "./patch-feedback"
 
-type SchTool = "select" | "wire" | "place" | "netlabel"
+type SchTool = "select" | "wire" | "place" | "netlabel" | "text" | "subblock" | "table" | "bus"
 
 interface PartPreset {
   id: string
@@ -54,6 +65,8 @@ const PART_PRESETS: PartPreset[] = [
 interface SchematicEditorProps {
   project: Project
   circuitJson: unknown[]
+  selectedComponent?: string | null
+  onSelectComponent?: (name: string | null) => void
   lockedComponents?: ReadonlySet<string>
   onToggleLock?: (name: string) => void
   onCommitFiles: (nextFiles: ProjectFiles) => void
@@ -61,6 +74,7 @@ interface SchematicEditorProps {
   canRedo: boolean
   onUndo: () => void
   onRedo: () => void
+  onRevealCode?: (name: string) => void
   onAskAi?: (componentName: string) => void
   onDone: () => void
 }
@@ -71,6 +85,8 @@ const snap = (v: number) => Math.round(v / GRID_STEP) * GRID_STEP
 export function SchematicEditor({
   project,
   circuitJson,
+  selectedComponent,
+  onSelectComponent,
   lockedComponents,
   onToggleLock,
   onCommitFiles,
@@ -78,6 +94,7 @@ export function SchematicEditor({
   canRedo,
   onUndo,
   onRedo,
+  onRevealCode,
   onAskAi,
   onDone,
 }: SchematicEditorProps) {
@@ -85,16 +102,37 @@ export function SchematicEditor({
   const codeComponents = useMemo(() => listComponents(project.files), [project.files])
 
   const [tool, setTool] = useState<SchTool>("select")
-  const [selectedName, setSelectedName] = useState<string | null>(null)
+  const [selectedNames, setSelectedNames] = useState<string[]>(() => (selectedComponent ? [selectedComponent] : []))
   const [placePresetId, setPlacePresetId] = useState(PART_PRESETS[0].id)
   const [netLabelName, setNetLabelName] = useState("VCC")
+  const [noteText, setNoteText] = useState("Blok Power 3.3V")
+  const [blockTitle, setBlockTitle] = useState("Subcircuit")
+  const [busName, setBusName] = useState("SPI_BUS")
   const [wireStart, setWireStart] = useState<SchematicPinView | null>(null)
+  const [filterComp, setFilterComp] = useState(true)
   const [cursorWorld, setCursorWorld] = useState<Point2D>({ x: 0, y: 0 })
   const [drag, setDrag] = useState<{ name: string; startWorld: Point2D; origX: number; origY: number; curX: number; curY: number } | null>(null)
   const [pan, setPan] = useState<Point2D>({ x: 0, y: 0 })
-  const [zoom, setZoom] = useState(64) // px per schematic unit
+  const [zoom, setZoom] = useState(64)
   const [panDrag, setPanDrag] = useState<{ startScreen: Point2D; startPan: Point2D } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+
+  const selectedName = selectedNames.length === 1 ? selectedNames[0] : null
+
+  useEffect(() => {
+    if (selectedComponent && !selectedNames.includes(selectedComponent)) {
+      setSelectedNames([selectedComponent])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedComponent])
+
+  const setPrimarySelection = useCallback(
+    (name: string | null) => {
+      setSelectedNames(name ? [name] : [])
+      onSelectComponent?.(name)
+    },
+    [onSelectComponent],
+  )
 
   const selectedSummary = useMemo(
     () => (selectedName ? inspectComponent(project.files, selectedName) : null),
@@ -116,7 +154,6 @@ export function SchematicEditor({
 
   useEffect(() => {
     fitView()
-    // Fit once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -144,12 +181,75 @@ export function SchematicEditor({
     (name: string) => {
       const res = deleteComponent(project.files, name, { removeConnectedTraces: true })
       if (res.status === "updated") {
-        setSelectedName(null)
+        setPrimarySelection(null)
         onCommitFiles(res.files)
       }
     },
-    [project.files, onCommitFiles],
+    [project.files, onCommitFiles, setPrimarySelection],
   )
+
+  const handleDuplicate = useCallback(
+    (name: string) => {
+      const prefix = name.match(/^[A-Za-z]+/)?.[0] ?? "U"
+      const nextName = nextDesignator(prefix, codeComponents.map((c) => c.name))
+      const res = duplicateComponent(project.files, name, nextName, { schDx: 2, schDy: 0 })
+      if (res.status === "updated") {
+        setPrimarySelection(nextName)
+        onCommitFiles(res.files)
+        toast.success(`${name} diduplikat menjadi ${nextName}`)
+      }
+    },
+    [project.files, codeComponents, onCommitFiles, setPrimarySelection],
+  )
+
+  const runAutoAnnotate = () => {
+    const res = autoAnnotateProject(project.files)
+    if (res.renamed.length === 0) {
+      toast("Semua designator sudah berurutan")
+      return
+    }
+    onCommitFiles(res.files)
+    toast.success(`${res.renamed.length} designator dirapikan`)
+  }
+
+  const alignSelected = (axis: "left" | "top" | "distX" | "distY") => {
+    if (selectedNames.length < 2) return
+    const comps = selectedNames
+      .map((n) => scene.components.find((c) => c.name === n))
+      .filter((c): c is SchematicCompView => Boolean(c))
+    if (comps.length < 2) return
+    let files: ProjectFiles = project.files
+    if (axis === "left") {
+      const minX = Math.min(...comps.map((c) => c.x))
+      for (const c of comps) {
+        const r = patchComponentProps(files, c.name, { schX: roundMm(minX) })
+        if (r.status === "updated") files = r.files
+      }
+    } else if (axis === "top") {
+      const maxY = Math.max(...comps.map((c) => c.y))
+      for (const c of comps) {
+        const r = patchComponentProps(files, c.name, { schY: roundMm(maxY) })
+        if (r.status === "updated") files = r.files
+      }
+    } else if (axis === "distX") {
+      const sorted = [...comps].sort((a, b) => a.x - b.x)
+      const minX = sorted[0].x
+      const step = (sorted[sorted.length - 1].x - minX) / (sorted.length - 1)
+      sorted.forEach((c, i) => {
+        const r = patchComponentProps(files, c.name, { schX: roundMm(minX + step * i) })
+        if (r.status === "updated") files = r.files
+      })
+    } else if (axis === "distY") {
+      const sorted = [...comps].sort((a, b) => b.y - a.y)
+      const maxY = sorted[0].y
+      const step = (maxY - sorted[sorted.length - 1].y) / (sorted.length - 1)
+      sorted.forEach((c, i) => {
+        const r = patchComponentProps(files, c.name, { schY: roundMm(maxY - step * i) })
+        if (r.status === "updated") files = r.files
+      })
+    }
+    onCommitFiles(files)
+  }
 
   // KiCad-style keyboard shortcuts
   useEffect(() => {
@@ -176,6 +276,9 @@ export function SchematicEditor({
         setWireStart(null)
       } else if (key === "l") {
         setTool("netlabel")
+        setWireStart(null)
+      } else if (key === "t") {
+        setTool("text")
         setWireStart(null)
       } else if (key === "r" && selectedName) {
         event.preventDefault()
@@ -212,14 +315,53 @@ export function SchematicEditor({
       const name = nextDesignator(preset.prefix, codeComponents.map((c) => c.name))
       const res = insertIntoBoard(project.files, project.entrypoint, preset.buildJsx(name, sx, sy))
       if (res.status === "updated") {
-        setSelectedName(name)
+        setPrimarySelection(name)
         onCommitFiles(res.files)
       }
       return
     }
 
+    if (tool === "text") {
+      const txt = noteText.trim() || "Catatan"
+      const res = insertIntoBoard(project.files, project.entrypoint, `<schematictext text=${jsxStringValue(txt)} schX={${sx}} schY={${sy}} />`)
+      if (res.status === "updated") onCommitFiles(res.files)
+      return
+    }
+
+    if (tool === "subblock") {
+      const title = blockTitle.trim() || "Subcircuit"
+      const safeName = title.replace(/[^A-Za-z0-9_]/g, "_")
+      const snippet = `<group name=${jsxStringValue(safeName)} showAsSchematicBox schTitle=${jsxStringValue(title)} schX={${sx}} schY={${sy}}>\n  {/* Tambahkan komponen blok ${title} di sini */}\n</group>`
+      const res = insertIntoBoard(project.files, project.entrypoint, snippet)
+      if (res.status === "updated") {
+        onCommitFiles(res.files)
+        toast.success(`Blok hierarki "${title}" ditambahkan`)
+      }
+      return
+    }
+
+    if (tool === "table") {
+      const snippet = `<schematictable schX={${sx}} schY={${sy}}>\n  <schematicrow><schematiccell text="Sinyal" /><schematiccell text="Keterangan" /></schematicrow>\n  <schematicrow><schematiccell text="VCC" /><schematiccell text="Suplai utama" /></schematicrow>\n</schematictable>`
+      const res = insertIntoBoard(project.files, project.entrypoint, snippet)
+      if (res.status === "updated") {
+        onCommitFiles(res.files)
+        toast.success("Tabel skematik (KiCad 9) ditambahkan")
+      }
+      return
+    }
+
+    if (tool === "bus") {
+      const bname = busName.trim() || "BUS1"
+      const res = insertIntoBoard(project.files, project.entrypoint, `<netalias net=${jsxStringValue(bname)} schX={${sx}} schY={${sy}} />`)
+      if (res.status === "updated") {
+        onCommitFiles(res.files)
+        toast.success(`Net alias / bus "${bname}" ditambahkan`)
+      }
+      return
+    }
+
     if (tool === "select") {
-      setSelectedName(null)
+      setPrimarySelection(null)
     }
   }
 
@@ -256,9 +398,13 @@ export function SchematicEditor({
   }
 
   const handleCompPointerDown = (event: ReactPointerEvent, comp: SchematicCompView) => {
-    if (tool !== "select" || event.button !== 0 || event.shiftKey) return
+    if (tool !== "select" || !filterComp || event.button !== 0 || event.shiftKey) return
     event.stopPropagation()
-    setSelectedName(comp.name)
+    if (event.altKey || event.metaKey || event.ctrlKey) {
+      setSelectedNames((prev) => (prev.includes(comp.name) ? prev.filter((n) => n !== comp.name) : [...prev, comp.name]))
+      return
+    }
+    setPrimarySelection(comp.name)
     const world = screenToWorld(event.clientX, event.clientY)
     setDrag({ name: comp.name, startWorld: world, origX: comp.x, origY: comp.y, curX: comp.x, curY: comp.y })
   }
@@ -285,7 +431,7 @@ export function SchematicEditor({
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col bg-surface">
-      {/* KiCad-style Schematic Toolbar */}
+      {/* KiCad Eeschema-style Toolbar */}
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-panel px-3 py-1.5 text-xs">
         <span className="font-semibold text-ink">Editor Skematik</span>
         <span className="h-4 w-px bg-line" />
@@ -296,6 +442,10 @@ export function SchematicEditor({
             ["wire", "Kabel (W)", Spline],
             ["place", "Tambah Part (A)", Plus],
             ["netlabel", "Net Label (L)", Tag],
+            ["bus", "Bus / Alias", GitFork],
+            ["text", "Catatan (T)", Type],
+            ["subblock", "Blok Hierarki", Box],
+            ["table", "Tabel Skematik", Table2],
           ] as const).map(([id, label, Icon]) => (
             <button
               key={id}
@@ -306,23 +456,18 @@ export function SchematicEditor({
                 setTool(id)
                 setWireStart(null)
               }}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition ${
+              className={`flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium transition ${
                 tool === id ? "bg-accent text-accent-ink" : "text-muted hover:bg-raised hover:text-ink"
               }`}
             >
               <Icon size={13} />
-              <span className="hidden md:inline">{label.split(" (")[0]}</span>
+              <span className="hidden 2xl:inline">{label.split(" (")[0]}</span>
             </button>
           ))}
         </div>
 
         {tool === "place" && (
-          <select
-            aria-label="Pilih komponen"
-            value={placePresetId}
-            onChange={(e) => setPlacePresetId(e.target.value)}
-            className="h-7 rounded-md border border-line bg-surface px-2 text-xs text-ink"
-          >
+          <select aria-label="Pilih komponen" value={placePresetId} onChange={(e) => setPlacePresetId(e.target.value)} className="h-7 rounded-md border border-line bg-surface px-2 text-xs text-ink">
             {PART_PRESETS.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.label}
@@ -332,13 +477,38 @@ export function SchematicEditor({
         )}
 
         {tool === "netlabel" && (
-          <input
-            aria-label="Nama net label"
-            value={netLabelName}
-            onChange={(e) => setNetLabelName(e.target.value)}
-            placeholder="VCC / GND"
-            className="h-7 w-28 rounded-md border border-line bg-surface px-2 font-mono text-xs text-ink"
-          />
+          <input aria-label="Nama net label" value={netLabelName} onChange={(e) => setNetLabelName(e.target.value)} placeholder="VCC / GND" className="h-7 w-24 rounded-md border border-line bg-surface px-2 font-mono text-xs text-ink" />
+        )}
+        {tool === "text" && (
+          <input aria-label="Teks catatan" value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Catatan…" className="h-7 w-32 rounded-md border border-line bg-surface px-2 text-xs text-ink" />
+        )}
+        {tool === "subblock" && (
+          <input aria-label="Judul blok hierarki" value={blockTitle} onChange={(e) => setBlockTitle(e.target.value)} placeholder="Nama subcircuit" className="h-7 w-28 rounded-md border border-line bg-surface px-2 text-xs text-ink" />
+        )}
+        {tool === "bus" && (
+          <input aria-label="Nama bus atau alias" value={busName} onChange={(e) => setBusName(e.target.value)} placeholder="SPI_BUS" className="h-7 w-24 rounded-md border border-line bg-surface px-2 font-mono text-xs text-ink" />
+        )}
+
+        <Button size="sm" variant="ghost" onClick={runAutoAnnotate} title="Urutkan ulang designator R1..Rn, C1..Cn">
+          <ListOrdered size={13} /> <span className="hidden xl:inline">Annotate</span>
+        </Button>
+
+        {selectedNames.length >= 2 && (
+          <div className="flex items-center gap-1 rounded-lg border border-accent/40 bg-accent/10 px-2 py-0.5">
+            <span className="font-mono text-[11px] text-accent">{selectedNames.length} dipilih</span>
+            <IconButton label="Ratakan kiri" className="size-6" onClick={() => alignSelected("left")}>
+              <AlignHorizontalJustifyStart size={12} />
+            </IconButton>
+            <IconButton label="Ratakan atas" className="size-6" onClick={() => alignSelected("top")}>
+              <AlignVerticalJustifyStart size={12} />
+            </IconButton>
+            <button type="button" className="rounded px-1 text-[10px] text-ink hover:bg-raised" onClick={() => alignSelected("distX")}>
+              Dist X
+            </button>
+            <button type="button" className="rounded px-1 text-[10px] text-ink hover:bg-raised" onClick={() => alignSelected("distY")}>
+              Dist Y
+            </button>
+          </div>
         )}
 
         <span className="h-4 w-px bg-line" />
@@ -350,15 +520,11 @@ export function SchematicEditor({
         </IconButton>
         {selectedName && (
           <>
-            <IconButton
-              label="Putar 90° (R)"
-              className="size-7"
-              onClick={() => {
-                const cur = selectedSummary?.schRotation ?? 0
-                handlePatch(selectedName, { schRotation: (cur + 90) % 360 })
-              }}
-            >
+            <IconButton label="Putar 90° (R)" className="size-7" onClick={() => handlePatch(selectedName, { schRotation: ((selectedSummary?.schRotation ?? 0) + 90) % 360 })}>
               <RotateCw size={14} />
+            </IconButton>
+            <IconButton label="Duplikat komponen" className="size-7" onClick={() => handleDuplicate(selectedName)}>
+              <Copy size={13} />
             </IconButton>
             <IconButton label="Hapus komponen (Del)" className="size-7 hover:text-danger" onClick={() => handleDelete(selectedName)}>
               <Trash2 size={14} />
@@ -388,10 +554,17 @@ export function SchematicEditor({
       {/* Main canvas + Inspector */}
       <div className="flex min-h-0 flex-1">
         <div className="relative min-h-0 flex-1 overflow-hidden bg-surface">
+          <div className="absolute left-3 top-2 z-10 flex items-center gap-1.5 rounded-lg border border-line bg-panel/90 px-2 py-1 text-[11px] backdrop-blur-xs">
+            <label className="flex cursor-pointer items-center gap-1 text-ink">
+              <input type="checkbox" checked={filterComp} onChange={(e) => setFilterComp(e.target.checked)} className="accent-emerald-500" />
+              Pilih simbol
+            </label>
+          </div>
+
           <svg
             ref={svgRef}
             aria-label="Kanvas skematik"
-            className={`h-full w-full select-none ${tool === "place" || tool === "wire" ? "cursor-crosshair" : panDrag ? "cursor-grabbing" : "cursor-default"}`}
+            className={`h-full w-full select-none ${tool !== "select" ? "cursor-crosshair" : panDrag ? "cursor-grabbing" : "cursor-default"}`}
             onWheel={handleWheel}
             onPointerDown={handleCanvasPointerDown}
             onPointerMove={handlePointerMove}
@@ -405,11 +578,9 @@ export function SchematicEditor({
             <rect width="100%" height="100%" fill="url(#sch-grid)" />
 
             <g transform={`translate(${(svgRef.current?.clientWidth ?? 600) / 2 + pan.x}, ${(svgRef.current?.clientHeight ?? 400) / 2 + pan.y})`}>
-              {/* Origin axes */}
               <line x1={-4000} y1={0} x2={4000} y2={0} stroke="var(--color-line)" strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />
               <line x1={0} y1={-4000} x2={0} y2={4000} stroke="var(--color-line)" strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />
 
-              {/* Existing wires */}
               {scene.wires.map((wire) =>
                 wire.segments.map((seg, idx) => (
                   <line
@@ -425,7 +596,6 @@ export function SchematicEditor({
                 )),
               )}
 
-              {/* Live rubber-band wire preview */}
               {tool === "wire" && wireStart && (
                 <polyline
                   points={`${wireStart.x * zoom},${-wireStart.y * zoom} ${cursorWorld.x * zoom},${-wireStart.y * zoom} ${cursorWorld.x * zoom},${-cursorWorld.y * zoom}`}
@@ -436,7 +606,6 @@ export function SchematicEditor({
                 />
               )}
 
-              {/* Net labels */}
               {scene.labels.map((lbl) => (
                 <g key={lbl.id} transform={`translate(${lbl.x * zoom}, ${-lbl.y * zoom})`}>
                   <rect x={-22} y={-10} width={44} height={18} rx={4} fill="var(--color-raised)" stroke="var(--color-accent)" strokeWidth={1} />
@@ -446,21 +615,16 @@ export function SchematicEditor({
                 </g>
               ))}
 
-              {/* Components */}
               {scene.components.map((comp) => {
                 const isDragging = drag?.name === comp.name
                 const cx = (isDragging ? drag.curX : comp.x) * zoom
                 const cy = -(isDragging ? drag.curY : comp.y) * zoom
                 const w = comp.width * zoom
                 const h = comp.height * zoom
-                const selected = selectedName === comp.name
+                const selected = selectedNames.includes(comp.name)
                 const isLocked = lockedComponents?.has(comp.name) ?? false
                 return (
-                  <g
-                    key={comp.id}
-                    onPointerDown={(e) => handleCompPointerDown(e, comp)}
-                    className="cursor-move"
-                  >
+                  <g key={comp.id} onPointerDown={(e) => handleCompPointerDown(e, comp)} className={tool === "select" && filterComp ? "cursor-move" : ""}>
                     <rect
                       x={cx - w / 2}
                       y={cy - h / 2}
@@ -481,17 +645,12 @@ export function SchematicEditor({
                       </text>
                     )}
 
-                    {/* Pins */}
                     {comp.pins.map((pin) => {
                       const px = (pin.x + (isDragging ? drag.curX - comp.x : 0)) * zoom
                       const py = -(pin.y + (isDragging ? drag.curY - comp.y : 0)) * zoom
                       const isWireOrigin = wireStart?.id === pin.id
                       return (
-                        <g
-                          key={pin.id}
-                          onPointerDown={(e) => handlePinClick(e, pin)}
-                          className="cursor-pointer"
-                        >
+                        <g key={pin.id} onPointerDown={(e) => handlePinClick(e, pin)} className="cursor-pointer">
                           <circle
                             cx={px}
                             cy={py}
@@ -510,7 +669,6 @@ export function SchematicEditor({
             </g>
           </svg>
 
-          {/* Bottom hint bar */}
           <div className="pointer-events-none absolute bottom-2 left-3 rounded-lg border border-line bg-panel/90 px-2.5 py-1 text-[11px] text-muted backdrop-blur-xs">
             {tool === "wire"
               ? wireStart
@@ -518,9 +676,17 @@ export function SchematicEditor({
                 : "Klik pin awal untuk menarik kabel (<trace>)"
               : tool === "place"
                 ? "Klik di kanvas untuk menempatkan komponen"
-                : tool === "netlabel"
-                  ? `Klik pin untuk memasang netlabel "${netLabelName}"`
-                  : "Seret komponen untuk pindah · Shift+Seret untuk geser kanvas · R putar · W kabel · A tambah part"}
+                : tool === "text"
+                  ? `Klik untuk menempatkan catatan "${noteText}"`
+                  : tool === "subblock"
+                    ? `Klik untuk menempatkan blok hierarki "${blockTitle}"`
+                    : tool === "table"
+                      ? "Klik untuk menempatkan tabel skematik (<schematictable>)"
+                      : tool === "bus"
+                        ? `Klik untuk menempatkan net alias / bus "${busName}"`
+                        : tool === "netlabel"
+                          ? `Klik pin untuk memasang netlabel "${netLabelName}"`
+                          : "Seret simbol · Alt+Klik multi-pilih · R putar · W kabel · A tambah part · T catatan · Shift+Seret geser kanvas"}
           </div>
         </div>
 
@@ -529,10 +695,12 @@ export function SchematicEditor({
           mode="schematic"
           locked={selectedName ? lockedComponents?.has(selectedName) : false}
           onToggleLock={onToggleLock}
+          onDuplicate={handleDuplicate}
+          onRevealCode={onRevealCode}
           onPatch={handlePatch}
           onDelete={handleDelete}
           onAskAi={onAskAi}
-          onClose={() => setSelectedName(null)}
+          onClose={() => setPrimarySelection(null)}
         />
       </div>
     </div>
