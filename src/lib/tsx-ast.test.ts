@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest"
 import {
+  addCopperPour,
+  addDifferentialPair,
   addPcbTrace,
   addTrace,
   addVia,
+  autoAnnotateProject,
   deleteComponent,
+  deleteElementSpan,
+  duplicateComponent,
   findBoardElement,
   inspectComponent,
   insertIntoBoard,
+  jsxStringValue,
   listComponents,
+  listCopperPours,
   parseJsxElements,
   patchBoardProps,
   patchComponentProps,
-  jsxStringValue,
+  readBoardConfig,
   selectorComponent,
 } from "./tsx-ast"
 
@@ -203,5 +210,62 @@ describe("hardening", () => {
     expect(selectorComponent("U1.pin3")).toBe("U1")
     expect(selectorComponent("net.GND")).toBeNull()
     expect(selectorComponent(undefined)).toBeNull()
+  })
+})
+
+describe("KiCad AST extensions", () => {
+  it("reads board stackup config, adds/lists/deletes copper pours and diff pairs", () => {
+    const files: Record<string, string> = {
+      "index.circuit.tsx": `export default () => (\n  <board width="60mm" height="40mm" layers={4} material="flex" fabricatorPreset="jlcpcb_standard">\n    <resistor name="R5" resistance="1k" schX={0} schY={2} />\n    <resistor name="R2" resistance="2k" schX={4} schY={2} />\n    <trace from=".R5 > .pin1" to=".R2 > .pin2" />\n  </board>\n)\n`,
+    }
+    expect(readBoardConfig(files, "index.circuit.tsx")).toMatchObject({
+      width: "60mm",
+      height: "40mm",
+      layers: 4,
+      material: "flex",
+      fabricatorPreset: "jlcpcb_standard",
+    })
+
+    const withPour = addCopperPour(files, "index.circuit.tsx", { net: "GND", layer: "bottom", useThermalReliefs: true })
+    expect(withPour.status).toBe("updated")
+    if (withPour.status !== "updated") return
+    const pours = listCopperPours(withPour.files)
+    expect(pours).toHaveLength(1)
+    expect(pours[0]).toMatchObject({ net: "GND", layer: "bottom", useThermalReliefs: true })
+
+    const removed = deleteElementSpan(withPour.files, pours[0].path, pours[0].start, pours[0].end)
+    expect(removed.status).toBe("updated")
+    if (removed.status !== "updated") return
+    expect(listCopperPours(removed.files)).toHaveLength(0)
+
+    const withDiff = addDifferentialPair(removed.files, "index.circuit.tsx", {
+      name: "USB",
+      positiveConnection: "USB_DP",
+      negativeConnection: "USB_DM",
+      maxLengthSkew: 0.05,
+    })
+    expect(withDiff.status).toBe("updated")
+    if (withDiff.status !== "updated") return
+    expect(withDiff.files["index.circuit.tsx"]).toContain('<differentialpair name="USB"')
+  })
+
+  it("duplicates components and auto-annotates designators with trace selector updates", () => {
+    const files = {
+      "index.circuit.tsx": `export default () => (\n  <board width="30mm" height="20mm">\n    <resistor name="R9" resistance="1k" pcbX={0} pcbY={0} schX={0} schY={2} />\n    <resistor name="R4" resistance="2k" pcbX={5} pcbY={0} schX={4} schY={2} />\n    <trace from=".R9 > .pin1" to=".R4 > .pin2" />\n  </board>\n)\n`,
+    }
+    const dup = duplicateComponent(files, "R9", "R10", { pcbDx: 2, pcbDy: 3 })
+    expect(dup.status).toBe("updated")
+    if (dup.status !== "updated") return
+    expect(dup.files["index.circuit.tsx"]).toContain('name="R10"')
+    expect(dup.files["index.circuit.tsx"]).toContain("pcbX={2}")
+
+    const annotated = autoAnnotateProject(files)
+    expect(annotated.renamed).toEqual([
+      { from: "R9", to: "R1" },
+      { from: "R4", to: "R2" },
+    ])
+    expect(annotated.files["index.circuit.tsx"]).toContain('name="R1"')
+    expect(annotated.files["index.circuit.tsx"]).toContain('name="R2"')
+    expect(annotated.files["index.circuit.tsx"]).toContain('from=".R1 > .pin1" to=".R2 > .pin2"')
   })
 })
