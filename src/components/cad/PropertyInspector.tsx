@@ -1,4 +1,4 @@
-import { FlipHorizontal2, Lock, RotateCw, Sparkles, Trash2, Unlock, X } from "lucide-react"
+import { Code2, Copy, FlipHorizontal2, Lock, RotateCw, Sparkles, Trash2, Unlock, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import type { ComponentSummary, PropPatchValue } from "../../lib/tsx-ast"
 import { Button, IconButton } from "../ui"
@@ -8,6 +8,8 @@ interface PropertyInspectorProps {
   mode: "schematic" | "pcb"
   locked?: boolean
   onToggleLock?: (name: string) => void
+  onDuplicate?: (name: string) => void
+  onRevealCode?: (name: string) => void
   onPatch: (name: string, patch: Record<string, PropPatchValue>) => void
   onDelete: (name: string) => void
   onAskAi?: (componentName: string) => void
@@ -30,6 +32,8 @@ export function PropertyInspector({
   mode,
   locked = false,
   onToggleLock,
+  onDuplicate,
+  onRevealCode,
   onPatch,
   onDelete,
   onAskAi,
@@ -45,8 +49,6 @@ export function PropertyInspector({
   const formX = component ? (mode === "schematic" ? component.schX : component.pcbX) : undefined
   const formY = component ? (mode === "schematic" ? component.schY : component.pcbY) : undefined
   const formRot = component ? (mode === "schematic" ? component.schRotation : component.pcbRotation) : undefined
-  // Reset the form only when this component's own values change, not on every unrelated file edit,
-  // so typing in the inspector survives a rebuild or an AI edit elsewhere.
   const formKey = component
     ? [component.name, mode, component.value, component.footprint, component.manufacturerPartNumber, formX, formY, formRot].join("|")
     : ""
@@ -59,7 +61,6 @@ export function PropertyInspector({
     setPosX(formX !== undefined ? String(formX) : "")
     setPosY(formY !== undefined ? String(formY) : "")
     setRotation(formRot !== undefined ? String(formRot) : "0")
-    // formKey captures every value read here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formKey])
 
@@ -90,7 +91,6 @@ export function PropertyInspector({
     if (mpn.trim() !== (component.manufacturerPartNumber ?? "")) {
       patch.manufacturerPartNumber = mpn.trim() || undefined
     }
-    // Only write coordinates the user actually changed, so Apply never adds pcbX/pcbY/rotation noise.
     const changedNumber = (text: string, current: number | undefined, fallback?: number) => {
       const n = Number.parseFloat(text)
       if (text.trim() === "" || !Number.isFinite(n)) return undefined
@@ -137,7 +137,6 @@ export function PropertyInspector({
           applyForm()
         }}
       >
-        {/* Quick actions */}
         <div className="flex flex-wrap gap-1.5">
           <Button size="sm" onClick={rotate90} title="Putar 90° (R)">
             <RotateCw size={12} /> 90°
@@ -156,6 +155,16 @@ export function PropertyInspector({
             >
               {locked ? <Lock size={12} /> : <Unlock size={12} />}
               {locked ? "Terkunci" : "Kunci"}
+            </Button>
+          )}
+          {onDuplicate && (
+            <Button size="sm" onClick={() => onDuplicate(component.name)} title="Duplikat komponen">
+              <Copy size={12} /> Duplikat
+            </Button>
+          )}
+          {onRevealCode && (
+            <Button size="sm" onClick={() => onRevealCode(component.name)} title="Loncat ke deklarasi di kode">
+              <Code2 size={12} /> Kode
             </Button>
           )}
         </div>
