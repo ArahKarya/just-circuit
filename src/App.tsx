@@ -1,23 +1,31 @@
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import type { ManualEditEvent } from "@tscircuit/core"
 import { ImportComponentDialog2, type JlcpcbComponentTsxLoadedPayload } from "@tscircuit/runframe/runner"
 import {
   AlertTriangle,
   BookOpen,
   Bug,
+  Calculator,
   ChevronDown,
   CircuitBoard,
+  ClipboardList,
   Code2,
   Cpu,
   FolderOpen,
   History,
+  Layers,
   ListChecks,
   LogOut,
   MessageSquare,
   Move,
+  PackageCheck,
   PackageSearch,
   PenTool,
   Settings,
+  Shapes,
+  Table2,
   TerminalSquare,
+  Wrench,
   Zap,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
@@ -29,8 +37,14 @@ import { BuildScopeControls } from "./components/BuildScopeControls"
 import { ChatPanel, type ChatDraftRequest } from "./components/ChatPanel"
 import { CodeEditor } from "./components/CodeEditor"
 import { LayoutEditor } from "./components/LayoutEditor"
+import { BoardSetupDialog } from "./components/cad/BoardSetupDialog"
+import { FootprintWizardDialog } from "./components/cad/FootprintWizardDialog"
+import { InteractiveBomDialog } from "./components/cad/InteractiveBomDialog"
+import { JobsetsDialog } from "./components/cad/JobsetsDialog"
 import { PcbCadEditor } from "./components/cad/PcbCadEditor"
+import { PcbCalculatorDialog } from "./components/cad/PcbCalculatorDialog"
 import { SchematicEditor } from "./components/cad/SchematicEditor"
+import { SymbolFieldsDialog } from "./components/cad/SymbolFieldsDialog"
 import { LoginScreen } from "./components/LoginScreen"
 import { PreviewPane } from "./components/PreviewPane"
 import { ProblemsPanel } from "./components/ProblemsPanel"
@@ -57,6 +71,7 @@ import { useWorkingProject } from "./hooks/useWorkingProject"
 import { applyLayoutMove, type LayoutMoveOutcome } from "./lib/apply-layout-move"
 import type { SimFinding } from "./lib/circuit-sim"
 import { buildIssues, extractIssues, locateComponent, mergeRunWarnings, type DesignIssue } from "./lib/drc"
+import { runExtendedErc } from "./lib/erc"
 import { notifyChange } from "./lib/live-data"
 import { MANUAL_EDITS_FILE } from "./lib/manual-edits"
 import { pinNamesRequest } from "./lib/parts"
@@ -67,7 +82,22 @@ import { buildFixRequest } from "./lib/system-prompt"
 import type { AttachmentRef, ProjectFiles, RunStatus } from "./lib/types"
 
 type LeftTab = "chat" | "code" | "problems"
-type DialogName = "settings" | "projects" | "import" | "parts" | "history" | "library" | "simulation" | "bugs" | null
+type DialogName =
+  | "settings"
+  | "projects"
+  | "import"
+  | "parts"
+  | "history"
+  | "library"
+  | "simulation"
+  | "bugs"
+  | "board-setup"
+  | "calculator"
+  | "symbol-fields"
+  | "ibom"
+  | "footprint-wizard"
+  | "jobsets"
+  | null
 type CadMode = "none" | "layout" | "schematic" | "pcb"
 
 const MIN_PANEL_WIDTH = 340
@@ -132,6 +162,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const [revealRequest, setRevealRequest] = useState<{ path: string; line: number; column: number; nonce: number } | null>(null)
   const handleCircuitJson = useCallback((json: unknown[], revision: string) => setRendered({ json, revision }), [])
   const [cadMode, setCadMode] = useState<CadMode>("none")
+  const [selectedComponent, setSelectedComponent] = useState<string | null>(null)
   const [lockedComponents, setLockedComponents] = useState<Set<string>>(() => new Set())
   const [showTerminal, setShowTerminal] = useState(false)
   /** A command the agent proposed and the user chose to run. */
@@ -249,6 +280,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   useEffect(() => {
     setRendered(null)
     setCadMode("none")
+    setSelectedComponent(null)
     setLockedComponents(new Set())
   }, [projectId])
 
@@ -258,8 +290,13 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
   const issues = useMemo<DesignIssue[]>(() => {
     if (runStatus.state === "running" || runStatus.state === "idle") return []
     const base = circuitJson ? extractIssues(circuitJson) : buildIssues(runStatus.errors)
-    return mergeRunWarnings(base, runStatus.warnings)
-  }, [circuitJson, runStatus])
+    const merged = mergeRunWarnings(base, runStatus.warnings)
+    if (!project) return merged
+    const erc = runExtendedErc(project.files, circuitJson)
+    if (erc.length === 0) return merged
+    const seen = new Set(merged.map((i) => i.key))
+    return [...merged, ...erc.filter((i) => !seen.has(i.key))]
+  }, [circuitJson, runStatus, project])
   const errorCount = issues.filter((i) => i.severity === "error").length
   problemsRef.current = issues
 
@@ -285,11 +322,20 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
       if (!current) return false
       const location = locateComponent(current.files, current.entrypoint, name)
       if (!location) return false
+      setSelectedComponent(name)
       setLeftTab("code")
       setRevealRequest({ ...location, nonce: Date.now() })
       return true
     },
     [working.project],
+  )
+
+  const revealFromCad = useCallback(
+    (name: string) => {
+      setCadMode("none")
+      revealComponent(name)
+    },
+    [revealComponent],
   )
 
   const askAiToFix = useCallback(
@@ -460,7 +506,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
             aria-label="Simulasi"
             onClick={() => setDialog("simulation")}
             disabled={!rendered}
-            title={rendered ? "Simulasi listrik & arus DC (cek korsleting, arus LED, daya resistor)" : "Butuh build yang berhasil"}
+            title={rendered ? "Simulasi listrik DC, Transient Osiloskop, AC Bode Plot & DC Sweep" : "Butuh build yang berhasil"}
           >
             <Zap size={14} className="text-warn" />
             <span className="hidden 2xl:inline">Simulasi</span>
@@ -487,6 +533,80 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
             <Cpu size={14} />
             <span className="hidden 2xl:inline">PCB CAD</span>
           </Button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <Button size="sm" variant="ghost" aria-label="Alat CAD" title="Alat bantu KiCad (Board Setup, Kalkulator PCB, BOM, Wizard, Jobsets)">
+                <Wrench size={14} className="text-accent" />
+                <span className="hidden 2xl:inline">Alat CAD</span>
+                <ChevronDown size={12} className="opacity-70" />
+              </Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                sideOffset={6}
+                className="z-[100000] min-w-[240px] rounded-xl border border-line bg-panel p-1.5 text-xs text-ink shadow-2xl"
+              >
+                <DropdownMenu.Label className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Desain &amp; Kalkulasi
+                </DropdownMenu.Label>
+                <DropdownMenu.Item
+                  onSelect={() => setDialog("board-setup")}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 outline-none transition hover:bg-raised focus:bg-raised"
+                >
+                  <Layers size={14} className="text-accent" />
+                  <span>Setup Board &amp; Stackup</span>
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  onSelect={() => setDialog("calculator")}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 outline-none transition hover:bg-raised focus:bg-raised"
+                >
+                  <Calculator size={14} className="text-accent" />
+                  <span>Kalkulator PCB (IPC-2221)</span>
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  onSelect={() => setDialog("symbol-fields")}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 outline-none transition hover:bg-raised focus:bg-raised"
+                >
+                  <Table2 size={14} className="text-accent" />
+                  <span>Tabel Properti (Bulk Edit)</span>
+                </DropdownMenu.Item>
+
+                <DropdownMenu.Separator className="my-1 h-px bg-line" />
+                <DropdownMenu.Label className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Komponen &amp; Panel
+                </DropdownMenu.Label>
+                <DropdownMenu.Item
+                  onSelect={() => setDialog("footprint-wizard")}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 outline-none transition hover:bg-raised focus:bg-raised"
+                >
+                  <Shapes size={14} className="text-accent" />
+                  <span>Footprint Wizard, .kicad_sym &amp; Panel</span>
+                </DropdownMenu.Item>
+
+                <DropdownMenu.Separator className="my-1 h-px bg-line" />
+                <DropdownMenu.Label className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Perakitan &amp; Produksi
+                </DropdownMenu.Label>
+                <DropdownMenu.Item
+                  disabled={!rendered}
+                  onSelect={() => setDialog("ibom")}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 outline-none transition hover:bg-raised focus:bg-raised data-[disabled]:pointer-events-none data-[disabled]:opacity-40"
+                >
+                  <ClipboardList size={14} className="text-accent" />
+                  <span>Interactive BOM &amp; Perakitan</span>
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  disabled={!rendered}
+                  onSelect={() => setDialog("jobsets")}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 outline-none transition hover:bg-raised focus:bg-raised data-[disabled]:pointer-events-none data-[disabled]:opacity-40"
+                >
+                  <PackageCheck size={14} className="text-accent" />
+                  <span>Output Jobsets (Paket Produksi)</span>
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
           <Button
             size="sm"
             variant="ghost"
@@ -660,6 +780,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
             <SchematicEditor
               project={project}
               circuitJson={rendered.json}
+              selectedComponent={selectedComponent}
+              onSelectComponent={setSelectedComponent}
               lockedComponents={lockedComponents}
               onToggleLock={toggleLock}
               onCommitFiles={commitCadFiles}
@@ -667,6 +789,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
               canRedo={undoStack.canRedo}
               onUndo={handleCadUndo}
               onRedo={handleCadRedo}
+              onRevealCode={revealFromCad}
               onAskAi={askAiAboutComponent}
               onDone={() => setCadMode("none")}
             />
@@ -675,6 +798,8 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
             <PcbCadEditor
               project={project}
               circuitJson={rendered.json}
+              selectedComponent={selectedComponent}
+              onSelectComponent={setSelectedComponent}
               lockedComponents={lockedComponents}
               onToggleLock={toggleLock}
               onCommitFiles={commitCadFiles}
@@ -682,6 +807,7 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
               canRedo={undoStack.canRedo}
               onUndo={handleCadUndo}
               onRedo={handleCadRedo}
+              onRevealCode={revealFromCad}
               onAskAi={askAiAboutComponent}
               onDone={() => setCadMode("none")}
             />
@@ -737,11 +863,51 @@ function Studio({ onLogout }: { onLogout?: () => void }) {
       {dialog === "history" && <HistoryDialog projectId={project.id} flush={working.flush} onClose={closeDialog} />}
       {dialog === "simulation" && rendered && (
         <SimulationDialog
+          project={project}
           circuitJson={rendered.json}
+          onCommitFiles={commitCadFiles}
           onAskAiToFix={askAiToFixSim}
           canAskAi={!chat.isBusy && !problem}
           onClose={closeDialog}
         />
+      )}
+      {dialog === "board-setup" && (
+        <BoardSetupDialog project={project} onCommitFiles={commitCadFiles} onClose={closeDialog} />
+      )}
+      {dialog === "calculator" && (
+        <PcbCalculatorDialog onSendToAi={(prompt) => askAiWithDraft(prompt, [])} onClose={closeDialog} />
+      )}
+      {dialog === "symbol-fields" && (
+        <SymbolFieldsDialog
+          project={project}
+          onCommitFiles={commitCadFiles}
+          onRevealComponent={revealComponent}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog === "ibom" && rendered && (
+        <InteractiveBomDialog
+          project={project}
+          circuitJson={rendered.json}
+          onRevealComponent={revealComponent}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog === "footprint-wizard" && (
+        <FootprintWizardDialog
+          project={project}
+          onApplyProject={async (next, message, file) => {
+            await working.apply(next, message)
+            if (file) {
+              setLeftTab("code")
+              setActiveFile(file)
+            }
+          }}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog === "jobsets" && rendered && (
+        <JobsetsDialog project={project} circuitJson={rendered.json} drcIssues={issues} onClose={closeDialog} />
       )}
       <ImportComponentDialog2
         isOpen={dialog === "import"}
