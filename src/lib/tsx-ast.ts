@@ -678,13 +678,27 @@ export function addVia(
 }
 
 /** Lists manual `<pcbtrace />` elements with their source spans so they can be edited or deleted. */
-export function listManualPcbTraces(files: ProjectFiles): { path: string; start: number; end: number; net?: string; raw: string }[] {
-  const out: { path: string; start: number; end: number; net?: string; raw: string }[] = []
+export interface ManualPcbTrace {
+  path: string
+  start: number
+  end: number
+  net?: string
+  raw: string
+  /** Literal route points, in the order written. */
+  points: { x: number; y: number }[]
+}
+
+const ROUTE_POINT = /\bx:\s*(-?\d+(?:\.\d+)?)\s*,\s*y:\s*(-?\d+(?:\.\d+)?)/g
+
+export function listManualPcbTraces(files: ProjectFiles): ManualPcbTrace[] {
+  const out: ManualPcbTrace[] = []
   for (const [path, source] of Object.entries(files)) {
     if (!/\.(tsx|jsx)$/.test(path)) continue
     for (const el of parseJsxElements(source)) {
       if (el.tagName !== "pcbtrace") continue
-      out.push({ path, start: el.start, end: el.end, net: getStringAttr(el, "net"), raw: source.slice(el.start, el.end) })
+      const raw = source.slice(el.start, el.end)
+      const points = [...raw.matchAll(ROUTE_POINT)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) }))
+      out.push({ path, start: el.start, end: el.end, net: getStringAttr(el, "net"), raw, points })
     }
   }
   return out

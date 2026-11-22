@@ -40,6 +40,10 @@ describe("circuit-extract", () => {
     expect(scene.components[0].pads[0]).toMatchObject({ componentName: "R1", pinLabel: "pin1", layer: "top" })
     expect(scene.traces[0]).toMatchObject({ layer: "top", width: 0.25 })
     expect(scene.traces[0].points).toHaveLength(2)
+    // tr1 has no source trace: it was drawn by hand with <pcbtrace>.
+    expect(scene.traces[0].manual).toBe(true)
+    const routed = extractPcbScene([...SAMPLE_CIRCUIT.slice(0, -1).map((el) => (el.type === "pcb_trace" ? { ...el, source_trace_id: "st_1" } : el))])
+    expect(routed.traces[0].manual).toBeUndefined()
     expect(scene.vias[0]).toMatchObject({ x: 10, y: -3, outerDiameter: 0.6 })
   })
 

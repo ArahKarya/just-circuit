@@ -56,6 +56,7 @@ export function PcbCadEditor({
   const codeNames = useMemo(() => listComponents(project.files).map((c) => c.name), [project.files])
   const copperPours = useMemo(() => listCopperPours(project.files), [project.files])
   const manualTraces = useMemo(() => listManualPcbTraces(project.files), [project.files])
+  const manualTraceRoutes = useMemo(() => manualTraces.map((trace) => trace.points), [manualTraces])
   const manualVias = useMemo(() => listManualVias(project.files), [project.files])
 
   const settings = usePcbToolSettings()
@@ -113,7 +114,7 @@ export function PcbCadEditor({
             drawing={drawing}
             selection={selection}
             pours={copperPours}
-            manualTraceCount={manualTraces.length}
+            manualTraceRoutes={manualTraceRoutes}
             manualVias={manualVias}
             heatmapCurrentA={heatmapCurrentA}
             lockedComponents={lockedComponents}

@@ -1,4 +1,4 @@
-import type { PcbBoardView, PcbCompView, Point2D } from "./circuit-extract"
+import type { PcbBoardView, PcbCompView, PcbTraceView, Point2D } from "./circuit-extract"
 import { roundMm } from "./tsx-ast"
 
 /** Zoom is expressed in screen pixels per millimetre. */
@@ -115,4 +115,38 @@ export function computeAlignment(comps: readonly PcbCompView[], axis: AlignAxis)
   const maxY = sorted[0].y
   const step = (maxY - sorted[sorted.length - 1].y) / (sorted.length - 1)
   return sorted.map((c, i) => ({ name: c.name, patch: { pcbY: roundMm(maxY - step * i) } }))
+}
+
+/** Rendered and written coordinates agree to within this distance (mm); the code rounds to 0.01. */
+const TRACE_MATCH_MM = 0.02
+
+/**
+ * Index of the manual trace a rendered segment came from, or -1. A `<pcbtrace>` is drawn as one
+ * segment per layer run, so every point of the segment must lie on that trace's written route.
+ * Falls back to the order of manual traces when the code's points are not literal numbers.
+ */
+export function matchManualTrace(
+  segmentPoints: readonly Point2D[],
+  manualRoutes: readonly (readonly Point2D[])[],
+  manualOrdinal: number,
+): number {
+  const near = (a: Point2D, b: Point2D) => distanceMm(a, b) <= TRACE_MATCH_MM
+  const byGeometry = manualRoutes.findIndex(
+    (route) => route.length > 0 && segmentPoints.every((pt) => route.some((rp) => near(pt, rp))),
+  )
+  if (byGeometry !== -1) return byGeometry
+  const literal = manualRoutes.some((route) => route.length > 0)
+  return !literal && manualOrdinal < manualRoutes.length ? manualOrdinal : -1
+}
+
+/** For each rendered segment, the index of the manual `<pcbtrace>` it belongs to, or -1. */
+export function manualTraceIndexes(traces: readonly PcbTraceView[], routes: readonly (readonly Point2D[])[]): number[] {
+  const ordinals = new Map<string, number>()
+  return traces.map((trace) => {
+    if (!trace.manual) return -1
+    // Segments of one circuit trace share its id prefix ("<pcb_trace_id>_<n>").
+    const parent = trace.id.replace(/_\d+$/, "")
+    if (!ordinals.has(parent)) ordinals.set(parent, ordinals.size)
+    return matchManualTrace(trace.points, routes, ordinals.get(parent) ?? 0)
+  })
 }

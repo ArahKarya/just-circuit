@@ -1,5 +1,5 @@
-import type { PcbScene } from "../../../lib/circuit-extract"
-import { polylineLength, toSvgPoints } from "../../../lib/pcb-cad-geometry"
+import type { PcbScene, Point2D } from "../../../lib/circuit-extract"
+import { manualTraceIndexes, polylineLength, toSvgPoints } from "../../../lib/pcb-cad-geometry"
 import type { CopperPourEntry } from "../../../lib/tsx-rules"
 import { CANVAS_BG, HIGHLIGHT_COLOR, LAYER_COLOR, POUR_FALLBACK_COLOR, SELECTED_COLOR, layerVisible, traceColor, traceMaxCurrent, type PcbTool } from "./constants"
 import type { PcbSelection } from "./usePcbSelection"
@@ -18,7 +18,7 @@ interface PcbCopperLayersProps {
   view: PcbViewOptions
   selection: PcbSelection
   pours: readonly CopperPourEntry[]
-  manualTraceCount: number
+  manualTraceRoutes: readonly (readonly Point2D[])[]
   manualVias: readonly { x: number; y: number }[]
   heatmapCurrentA: number
 }
@@ -79,11 +79,13 @@ function PourShading({ scene, zoom, view, pours }: PcbCopperLayersProps) {
 }
 
 /** Traces are clickable to highlight their net; manual traces also become selectable for deletion. */
-function Traces({ scene, zoom, tool, view, selection, manualTraceCount, heatmapCurrentA }: PcbCopperLayersProps) {
+function Traces({ scene, zoom, tool, view, selection, manualTraceRoutes, heatmapCurrentA }: PcbCopperLayersProps) {
   const pickable = tool === "select" && view.filterTrace
+  const manualIndexes = manualTraceIndexes(scene.traces, manualTraceRoutes)
   return scene.traces.map((trace, idx) => {
     if (!layerVisible(trace.layer, view.showTop, view.showBottom)) return null
-    const isSelected = selection.selectedTraceIdx === idx
+    const manualIdx = manualIndexes[idx]
+    const isSelected = manualIdx !== -1 && selection.selectedTraceIdx === manualIdx
     const isHighlighted = Boolean(selection.highlightedNet && trace.netName === selection.highlightedNet)
     const lenMm = polylineLength(trace.points)
     const maxA = traceMaxCurrent(trace.width)
@@ -102,7 +104,7 @@ function Traces({ scene, zoom, tool, view, selection, manualTraceCount, heatmapC
           if (!pickable) return
           e.stopPropagation()
           if (trace.netName) selection.setHighlightedNet(trace.netName)
-          if (idx < manualTraceCount) selection.selectTrace(idx)
+          if (manualIdx !== -1) selection.selectTrace(manualIdx)
         }}
       >
         <title>{`${trace.layer} · ${trace.width}mm · ${lenMm.toFixed(1)}mm · maks ${maxA}A${trace.netName ? ` · ${trace.netName}` : ""}`}</title>

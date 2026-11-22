@@ -91,6 +91,23 @@ test("routing a 45° copper trace, adding a via and a testpoint writes them into
   await finishAndCheckBuild(page)
 })
 
+test("a manual trace can be selected and deleted", async ({ page }) => {
+  await openPcbCad(page)
+  await page.keyboard.press("x")
+  await clickCanvas(page, 0.35, 0.75)
+  await clickCanvas(page, 0.65, 0.75)
+  await page.keyboard.press("Enter")
+  await source(page).toMatch(/<pcbtrace\s/)
+  await expect(page.getByText("Build OK")).toBeVisible({ timeout: 60_000 })
+
+  await page.keyboard.press("Escape")
+  // The new trace is the only 0.25 mm one; the autorouter uses 0.15 mm.
+  await canvas(page).locator("polyline", { has: page.locator("title", { hasText: "0.25mm" }) }).dispatchEvent("pointerdown")
+  await editor(page).getByRole("button", { name: "Hapus Trace" }).click()
+  await source(page).not.toMatch(/<pcbtrace\s/)
+  await finishAndCheckBuild(page)
+})
+
 test("copper pour zones can be added and removed from the zone manager", async ({ page }) => {
   await openPcbCad(page)
   await editor(page).getByRole("button", { name: /Zone \(0\)/ }).click()

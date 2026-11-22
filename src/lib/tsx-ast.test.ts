@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  listManualPcbTraces,
   addPcbTrace,
   addTrace,
   addVia,
@@ -265,5 +266,13 @@ describe("patchComponentProps with a file path", () => {
     expect(res.path).toBe("b.tsx")
     expect(res.files["a.tsx"]).toContain('resistance="1k"')
     expect(res.files["b.tsx"]).toContain('resistance="2k"')
+  })
+})
+
+describe("listManualPcbTraces", () => {
+  it("reads the written route points of each manual trace", () => {
+    const source = `export default () => (<board><pcbtrace route={[{ route_type: "wire", x: -5, y: 4.25, width: 0.2, layer: "top" }, { route_type: "wire", x: 5, y: 4.25, width: 0.2, layer: "top" }]} /></board>)`
+    const [trace] = listManualPcbTraces({ "index.tsx": source })
+    expect(trace.points).toEqual([{ x: -5, y: 4.25 }, { x: 5, y: 4.25 }])
   })
 })

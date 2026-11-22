@@ -1,4 +1,4 @@
-import type { PcbScene } from "../../../lib/circuit-extract"
+import type { PcbScene, Point2D } from "../../../lib/circuit-extract"
 import type { CopperPourEntry } from "../../../lib/tsx-rules"
 import { CANVAS_BG } from "./constants"
 import { PcbComponentLayer } from "./PcbComponentLayer"
@@ -19,7 +19,8 @@ interface PcbCanvasProps {
   drawing: PcbDrawing
   selection: PcbSelection
   pours: readonly CopperPourEntry[]
-  manualTraceCount: number
+  /** Written route of each manual `<pcbtrace>`, in source order. */
+  manualTraceRoutes: readonly (readonly Point2D[])[]
   manualVias: readonly { x: number; y: number }[]
   heatmapCurrentA: number
   lockedComponents?: ReadonlySet<string>
@@ -60,7 +61,7 @@ export function PcbCanvas(props: PcbCanvasProps) {
           view={view}
           selection={selection}
           pours={props.pours}
-          manualTraceCount={props.manualTraceCount}
+          manualTraceRoutes={props.manualTraceRoutes}
           manualVias={props.manualVias}
           heatmapCurrentA={props.heatmapCurrentA}
         />

@@ -87,6 +87,8 @@ export interface PcbTraceView {
   width: number
   points: Point2D[]
   netName?: string
+  /** True for a hand-drawn `<pcbtrace>`: it has no source trace behind it. */
+  manual?: boolean
 }
 
 export interface PcbViaView {
@@ -326,6 +328,7 @@ export function extractPcbScene(circuitJson: readonly unknown[]): PcbScene {
   const traces: PcbTraceView[] = []
   for (const el of elements) {
     if (el.type !== "pcb_trace" || !Array.isArray(el.route)) continue
+    const manual = !str(el.source_trace_id)
     let currentLayer = "top"
     let currentWidth = 0.2
     let currentPts: Point2D[] = []
@@ -336,6 +339,7 @@ export function extractPcbScene(circuitJson: readonly unknown[]): PcbScene {
           layer: currentLayer,
           width: currentWidth,
           points: currentPts,
+          ...(manual ? { manual } : {}),
         })
       }
       currentPts = []

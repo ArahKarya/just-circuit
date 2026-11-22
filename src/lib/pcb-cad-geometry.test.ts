@@ -12,6 +12,8 @@ import {
   snapToGrid,
   snapToPadOrGrid,
   toSvgPoints,
+  manualTraceIndexes,
+  matchManualTrace,
 } from "./pcb-cad-geometry"
 
 function comp(name: string, x: number, y: number, pads: { x: number; y: number }[] = []): PcbCompView {
@@ -138,5 +140,43 @@ describe("computeAlignment", () => {
     const input = [...comps]
     computeAlignment(input, "distX")
     expect(input.map((c) => c.name)).toEqual(["A", "B", "C"])
+  })
+})
+
+describe("matchManualTrace", () => {
+  const routes = [
+    [{ x: -5, y: 4 }, { x: 5, y: 4 }],
+    [{ x: 0, y: -2 }, { x: 2, y: -2 }, { x: 2, y: 1 }],
+  ]
+
+  it("finds the manual trace whose written route holds every rendered point", () => {
+    expect(matchManualTrace([{ x: 2, y: -2 }, { x: 2.005, y: 1 }], routes, 0)).toBe(1)
+    expect(matchManualTrace([{ x: -5, y: 4 }, { x: 5, y: 4 }], routes, 1)).toBe(0)
+  })
+
+  it("returns -1 when no written route matches", () => {
+    expect(matchManualTrace([{ x: 9, y: 9 }, { x: 5, y: 4 }], routes, 0)).toBe(-1)
+  })
+
+  it("falls back to source order when routes are not literal numbers", () => {
+    expect(matchManualTrace([{ x: 1, y: 1 }], [[], []], 1)).toBe(1)
+    expect(matchManualTrace([{ x: 1, y: 1 }], [[]], 3)).toBe(-1)
+  })
+})
+
+describe("manualTraceIndexes", () => {
+  it("maps every segment of a manual trace split by a via to that trace, after routed traces", () => {
+    const seg = (id: string, points: { x: number; y: number }[], manual?: boolean) => ({ id, layer: "top", width: 0.2, points, ...(manual ? { manual } : {}) })
+    const traces = [
+      seg("source_trace_0_0", [{ x: 0, y: 0 }, { x: 1, y: 0 }]),
+      seg("pcb_trace_0_1", [{ x: -5, y: 4 }, { x: 0, y: 4 }], true),
+      seg("pcb_trace_0_2", [{ x: 0, y: 4 }, { x: 5, y: 4 }], true),
+      seg("pcb_trace_1_3", [{ x: 0, y: -2 }, { x: 2, y: -2 }], true),
+    ]
+    const routes = [
+      [{ x: -5, y: 4 }, { x: 0, y: 4 }, { x: 5, y: 4 }],
+      [{ x: 0, y: -2 }, { x: 2, y: -2 }],
+    ]
+    expect(manualTraceIndexes(traces, routes)).toEqual([-1, 0, 0, 1])
   })
 })
